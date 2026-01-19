@@ -436,6 +436,11 @@
           this.el.addEventListener("gripup", this.onRelease.bind(this));
           this.el.addEventListener("triggerdown", this.onGrab.bind(this));
           this.el.addEventListener("triggerup", this.onRelease.bind(this));
+          // Gestion des événements touchstart pour les contrôleurs Quest
+          this.el.addEventListener("xbuttondown", this.onGrab.bind(this));
+          this.el.addEventListener("xbuttonup", this.onRelease.bind(this));
+          this.el.addEventListener("abuttondown", this.onGrab.bind(this));
+          this.el.addEventListener("abuttonup", this.onRelease.bind(this));
         },
         onGrab: function() {
           if (this.grabbedCable) return;
@@ -468,12 +473,24 @@
 
       document.addEventListener("DOMContentLoaded", function() {
         console.log("Severance VR - Ready");
+        // Détection WebXR pour Meta Quest
+        if (navigator.xr) {
+          navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+            console.log("WebXR immersive-vr supported:", supported);
+            if (supported) {
+              console.log("✓ VR mode available for Meta Quest 3");
+            }
+          }).catch(e => console.log("WebXR error:", e));
+        } else {
+          console.warn("WebXR not supported - VR features may not work");
+        }
       });
     </script>
 
     <a-scene 
       vr-mode-ui="enabled: true"
-      renderer="antialias: true; colorManagement: true; sortObjects: true"
+      xrweb="requiredFeatures: viewer,hand-tracking; optionalFeatures: hit-test,dom-overlay,dom-overlay-for-handheld-ar,camera-access"
+      renderer="antialias: true; colorManagement: true; sortObjects: true; xrCompatible: true"
       fog="type: exponential; color: #f0f0f0; density: 0.008">
       
       <a-assets timeout="3000">
@@ -605,13 +622,11 @@
       <a-light type="ambient" color="#d0d0d0" intensity="0.4"></a-light>
 
       <a-entity id="rig" position="0 0 2">
-        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
-          <a-cursor color="#00ff00" fuse="false" raycaster="objects: .grabbable"></a-cursor>
-        </a-camera>
+        <a-camera position="0 1.6 0" wasd-controls="acceleration: 20"></a-camera>
       </a-entity>
 
-      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
-      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
+      <a-entity id="leftHand" hand-controls="hand: left; handModelStyle: lowPoly; model: false" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
+      <a-entity id="rightHand" hand-controls="hand: right; handModelStyle: lowPoly; model: false" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
 
       <a-sky color="#e0e0e0"></a-sky>
     </a-scene>

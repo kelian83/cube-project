@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VR Diagnostics</title>
+  <style>
+    body { font-family: monospace; background: #1a1a1a; color: #00ff00; padding: 20px; }
+    .error { color: #ff0000; }
+    .success { color: #00ff00; }
+    .info { color: #ffff00; }
+    pre { background: #000; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>VR Diagnostics pour Meta Quest 3</h1>
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+    
+    function log(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = msg;
+      output.appendChild(div);
+      console.log(msg);
+    }
+
+    // Test 1: WebXR
+    log('=== WebXR Detection ===', 'info');
+    if (navigator.xr) {
+      log('✓ navigator.xr exists', 'success');
+      navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+        log(`✓ immersive-vr supported: ${supported}`, supported ? 'success' : 'error');
+      }).catch(e => log(`✗ Error checking immersive-vr: ${e.message}`, 'error'));
+    } else {
+      log('✗ navigator.xr NOT found', 'error');
+    }
+
+    // Test 2: User Agent
+    log('\n=== User Agent ===', 'info');
+    log(`User Agent: ${navigator.userAgent}`, 'info');
+    const isQuest = navigator.userAgent.includes('Quest') || navigator.userAgent.includes('OVR');
+    log(`Is Meta Quest: ${isQuest}`, isQuest ? 'success' : 'error');
+
+    // Test 3: Screen Info
+    log('\n=== Display ===', 'info');
+    log(`Screen: ${window.screen.width}x${window.screen.height}`, 'info');
+    log(`Device Pixel Ratio: ${window.devicePixelRatio}`, 'info');
+
+    // Test 4: A-Frame
+    log('\n=== A-Frame ===', 'info');
+    setTimeout(() => {
+      if (window.AFRAME) {
+        log(`✓ A-Frame v${AFRAME.version} loaded`, 'success');
+        // Test custom components
+        const scene = document.querySelector('a-scene');
+        if (scene) {
+          log('✓ a-scene found', 'success');
+          log(`Scene components: ${Object.keys(scene.components).join(', ')}`, 'info');
+        } else {
+          log('✗ No a-scene found', 'error');
+        }
+      } else {
+        log('✗ A-Frame NOT loaded', 'error');
+      }
+    }, 1000);
+
+    log('\nAttendu en VR: vous devriez voir le bouton "Enter VR" après chargement', 'info');
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Severance VR Experience - Acte 1</title>
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.0.0/dist/aframe-extras.min.js"></script>
     <style>
       body { margin: 0; overflow: hidden; }
       .a-enter-vr-button { 
@@ -489,9 +490,11 @@
 
     <a-scene 
       vr-mode-ui="enabled: true"
-      xrweb="requiredFeatures: viewer,hand-tracking; optionalFeatures: hit-test,dom-overlay,dom-overlay-for-handheld-ar,camera-access"
-      renderer="antialias: true; colorManagement: true; sortObjects: true; xrCompatible: true"
-      fog="type: exponential; color: #f0f0f0; density: 0.008">
+      renderer="antialias: true; colorManagement: true; sortObjects: true; xrCompatible: true; precision: medium"
+      fog="type: exponential; color: #f0f0f0; density: 0.008"
+      vr="enabled: true"
+      webxr="requiredFeatures: viewer,hand-tracking; optionalFeatures: hit-test"
+      inspector>
       
       <a-assets timeout="3000">
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
@@ -622,11 +625,11 @@
       <a-light type="ambient" color="#d0d0d0" intensity="0.4"></a-light>
 
       <a-entity id="rig" position="0 0 2">
-        <a-camera position="0 1.6 0" wasd-controls="acceleration: 20"></a-camera>
+        <a-camera position="0 1.6 0"></a-camera>
       </a-entity>
 
-      <a-entity id="leftHand" hand-controls="hand: left; handModelStyle: lowPoly; model: false" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
-      <a-entity id="rightHand" hand-controls="hand: right; handModelStyle: lowPoly; model: false" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
+      <a-entity id="leftHand" tracked-controls="hand: left; controller: oculus-touch-controls" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
+      <a-entity id="rightHand" tracked-controls="hand: right; controller: oculus-touch-controls" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
 
       <a-sky color="#e0e0e0"></a-sky>
     </a-scene>

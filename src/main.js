@@ -1,3 +1,4 @@
+import 'aframe';
 /**
  * Severance x Bang & Olufsen - WebXR Experience
  * Optimisé pour Meta Quest 3

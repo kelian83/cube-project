@@ -172,11 +172,28 @@
           
           var anchorY = 2.95;
           var count = 10;
+          
+          // ✅ Créer une courbe naturelle de câble pendu (catenary)
           for (var i = 0; i < count; i++) {
-            var y = anchorY - (i * this.data.length / count);
-            this.positions.push(new THREE.Vector3(this.data.anchorX, y, this.data.anchorZ));
+            var t = i / (count - 1); // Normalise 0 à 1
+            var y = anchorY - (t * this.data.length);
+            
+            // Ajouter un "sag" (affaissement) naturel en forme de parabole
+            var sag = Math.sin(t * Math.PI) * 0.15; // Affaissement max 15cm au milieu
+            
+            // Légère oscillation aléatoire pour un effet naturel
+            var randomX = (Math.random() - 0.5) * 0.02;
+            var randomZ = (Math.random() - 0.5) * 0.02;
+            
+            this.positions.push(new THREE.Vector3(
+              this.data.anchorX + randomX,
+              y - sag,
+              this.data.anchorZ + randomZ
+            ));
+            
             this.velocities.push(new THREE.Vector3(0, 0, 0));
           }
+          
           this.createVisuals();
         },
         createVisuals: function() {
@@ -624,6 +641,7 @@
       performance-monitor>
       
       <a-assets timeout="3000">
+        <a-asset-item id="speaker-model" src="./assets/enceinte_deluxe.glb"></a-asset-item>
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
         <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>
@@ -704,23 +722,9 @@
 
       <a-entity id="bo-console" position="0 0.78 0.2" bo-console="ports: 4"></a-entity>
 
-      <a-entity id="speaker-left" position="-4 0 -3" speaker-vibrate="active: false">
-        <a-cylinder position="0 0.1 0" radius="0.4" height="0.2" mixin="dark-metal"></a-cylinder>
-        <a-cylinder position="0 0.8 0" radius="0.35" height="1.2" mixin="dark-metal"></a-cylinder>
-        <a-cone position="0 1.5 0" radius-bottom="0.35" radius-top="0.5" height="0.4" mixin="aluminum"></a-cone>
-        <a-sphere position="0 1.8 0" radius="0.3" mixin="dark-metal"></a-sphere>
-        <a-torus position="0 0.5 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
-        <a-torus position="0 1.1 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
-      </a-entity>
+      <a-entity id="speaker-left" position="-4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
 
-      <a-entity id="speaker-right" position="4 0 -3" speaker-vibrate="active: false">
-        <a-cylinder position="0 0.1 0" radius="0.4" height="0.2" mixin="dark-metal"></a-cylinder>
-        <a-cylinder position="0 0.8 0" radius="0.35" height="1.2" mixin="dark-metal"></a-cylinder>
-        <a-cone position="0 1.5 0" radius-bottom="0.35" radius-top="0.5" height="0.4" mixin="aluminum"></a-cone>
-        <a-sphere position="0 1.8 0" radius="0.3" mixin="dark-metal"></a-sphere>
-        <a-torus position="0 0.5 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
-        <a-torus position="0 1.1 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
-      </a-entity>
+      <a-entity id="speaker-right" position="4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
 
       <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.8"></a-entity>
       <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.6"></a-entity>

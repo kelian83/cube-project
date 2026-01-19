@@ -599,6 +599,125 @@
         }
       });
       
+      // ✅ Composant pour grab avec souris (PC)
+      AFRAME.registerComponent("desktop-grabber", {
+        init: function() {
+          this.grabbedCable = null;
+          this.cableComponents = [];
+          this.isMouseDown = false;
+          this.raycaster = new THREE.Raycaster();
+          this.mouse = new THREE.Vector2();
+          
+          var self = this;
+          
+          // Cache les câbles
+          setTimeout(function() {
+            var cables = document.querySelectorAll("[hanging-cable]");
+            cables.forEach(function(cableEl) {
+              if (cableEl.components["hanging-cable"]) {
+                self.cableComponents.push(cableEl.components["hanging-cable"]);
+              }
+            });
+            console.log("Desktop grabber: cached", self.cableComponents.length, "cables");
+          }, 200);
+          
+          // Events souris
+          document.addEventListener("mousedown", this.onMouseDown.bind(this));
+          document.addEventListener("mouseup", this.onMouseUp.bind(this));
+          document.addEventListener("mousemove", this.onMouseMove.bind(this));
+          
+          // Events tactiles
+          document.addEventListener("touchstart", this.onTouchStart.bind(this));
+          document.addEventListener("touchend", this.onTouchEnd.bind(this));
+          document.addEventListener("touchmove", this.onTouchMove.bind(this));
+        },
+        onMouseDown: function(evt) {
+          this.isMouseDown = true;
+          this.tryGrab(evt.clientX, evt.clientY);
+        },
+        onMouseUp: function() {
+          this.isMouseDown = false;
+          if (this.grabbedCable) {
+            this.grabbedCable.release();
+            this.grabbedCable = null;
+          }
+        },
+        onMouseMove: function(evt) {
+          if (!this.isMouseDown || !this.grabbedCable) return;
+          this.updateGrabPosition(evt.clientX, evt.clientY);
+        },
+        onTouchStart: function(evt) {
+          if (evt.touches.length > 0) {
+            this.isMouseDown = true;
+            this.tryGrab(evt.touches[0].clientX, evt.touches[0].clientY);
+          }
+        },
+        onTouchEnd: function() {
+          this.isMouseDown = false;
+          if (this.grabbedCable) {
+            this.grabbedCable.release();
+            this.grabbedCable = null;
+          }
+        },
+        onTouchMove: function(evt) {
+          if (!this.isMouseDown || !this.grabbedCable || evt.touches.length === 0) return;
+          this.updateGrabPosition(evt.touches[0].clientX, evt.touches[0].clientY);
+        },
+        tryGrab: function(clientX, clientY) {
+          var camera = this.el.sceneEl.camera;
+          var canvas = this.el.sceneEl.canvas;
+          
+          this.mouse.x = (clientX / canvas.clientWidth) * 2 - 1;
+          this.mouse.y = -(clientY / canvas.clientHeight) * 2 + 1;
+          
+          this.raycaster.setFromCamera(this.mouse, camera);
+          
+          var closest = null;
+          var closestDist = 0.5;
+          var self = this;
+          
+          this.cableComponents.forEach(function(comp) {
+            if (!comp || comp.isConnected || comp.isGrabbed) return;
+            var tipPos = comp.getTipPosition();
+            var dist = self.raycaster.ray.distanceToPoint(tipPos);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closest = comp;
+            }
+          });
+          
+          if (closest) {
+            // Créer un helper invisible pour le grab
+            if (!this.grabHelper) {
+              this.grabHelper = document.createElement("a-entity");
+              this.grabHelper.setAttribute("id", "grab-helper");
+              this.el.sceneEl.appendChild(this.grabHelper);
+            }
+            closest.grab(this.grabHelper);
+            this.grabbedCable = closest;
+            console.log("Desktop: Cable grabbed");
+          }
+        },
+        updateGrabPosition: function(clientX, clientY) {
+          if (!this.grabHelper) return;
+          
+          var camera = this.el.sceneEl.camera;
+          var canvas = this.el.sceneEl.canvas;
+          
+          this.mouse.x = (clientX / canvas.clientWidth) * 2 - 1;
+          this.mouse.y = -(clientY / canvas.clientHeight) * 2 + 1;
+          
+          this.raycaster.setFromCamera(this.mouse, camera);
+          
+          // Calculer la position à 1.5m devant la caméra
+          var dir = this.raycaster.ray.direction.clone();
+          var origin = this.raycaster.ray.origin.clone();
+          var pos = origin.add(dir.multiplyScalar(1.5));
+          
+          this.grabHelper.object3D.position.copy(pos);
+        }
+      });
+      
       // ✅ Monitoring des performances VR
       AFRAME.registerComponent("performance-monitor", {
         init: function() {
@@ -638,10 +757,11 @@
       webxr="requiredFeatures: local-floor,hand-tracking; referenceSpaceType: local-floor"
       renderer="antialias: true; colorManagement: true; sortObjects: true; physicallyCorrectLights: true"
       fog="type: exponential; color: #f0f0f0; density: 0.008"
-      performance-monitor>
+      performance-monitor
+      desktop-grabber>
       
       <a-assets timeout="3000">
-        <a-asset-item id="speaker-model" src="./assets/enceinte_deluxe.glb"></a-asset-item>
+        <a-asset-item id="speaker-model" src="enceinte_deluxe.glb"></a-asset-item>
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
         <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>

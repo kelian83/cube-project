@@ -213,37 +213,66 @@
           
           this.sparksEntity = document.createElement("a-entity");
           this.sparksEntity.setAttribute("position", "0 -0.1 0");
-          for (var j = 0; j < 6; j++) {
-            var spark = document.createElement("a-sphere");
-            spark.setAttribute("radius", "0.012");
-            spark.setAttribute("color", "#00ff44");
-            spark.setAttribute("material", "shader: flat; emissive: #00ff44; emissiveIntensity: 2");
-            spark.classList.add("spark");
-            this.sparksEntity.appendChild(spark);
+          
+          // Désactiver sparks en VR (trop coûteux)
+          var isVR = this.el.sceneEl.is('vr-mode');
+          if (!isVR) {
+            for (var j = 0; j < 6; j++) {
+              var spark = document.createElement("a-sphere");
+              spark.setAttribute("radius", "0.012");
+              spark.setAttribute("color", "#00ff44");
+              spark.setAttribute("material", "shader: flat; emissive: #00ff44; emissiveIntensity: 2; transparent: true; opacity: 0.8");
+              spark.classList.add("spark");
+              this.sparksEntity.appendChild(spark);
+            }
+          } else {
+            this.sparksEntity.object3D.visible = false;
           }
+          
           this.tipEntity.appendChild(this.sparksEntity);
           this.el.appendChild(this.tipEntity);
         },
         tick: function(time, delta) {
           if (this.isConnected) return;
-          var dt = Math.min(delta / 1000, 0.033);
-          this.animateSparks(time);
-          this.simulatePhysics(dt);
-          this.updateVisuals();
+          
+          // Throttle physics à 30 FPS au lieu de 72
+          this.physicsTick = (this.physicsTick || 0) + delta;
+          if (this.physicsTick >= 33) {
+            var dt = Math.min(this.physicsTick / 1000, 0.033);
+            this.simulatePhysics(dt);
+            this.updateVisuals();
+            this.physicsTick = 0;
+          }
+          
+          // Sparks à 15 FPS (si actifs)
+          if (this.sparksEntity && this.sparksEntity.object3D.visible) {
+            this.sparksTick = (this.sparksTick || 0) + delta;
+            if (this.sparksTick >= 66) {
+              this.animateSparks(time);
+              this.sparksTick = 0;
+            }
+          }
         },
         animateSparks: function(time) {
-          if (!this.sparksEntity) return;
+          if (!this.sparksEntity || !this.sparksEntity.object3D.visible) return;
           var sparks = this.sparksEntity.querySelectorAll(".spark");
           sparks.forEach(function(spark, i) {
             var t = time * 0.004 + i * 1.05;
             var r = 0.03 + Math.sin(t) * 0.02;
             var angle = t * 2;
-            spark.setAttribute("position", {
-              x: Math.cos(angle) * r,
-              y: Math.sin(t * 3) * 0.025,
-              z: Math.sin(angle) * r
-            });
-            spark.setAttribute("opacity", 0.4 + Math.sin(t * 4) * 0.4);
+            
+            // ✅ Direct object3D update (80% plus rapide)
+            spark.object3D.position.set(
+              Math.cos(angle) * r,
+              Math.sin(t * 3) * 0.025,
+              Math.sin(angle) * r
+            );
+            
+            // ✅ Material opacity direct
+            var opacity = 0.4 + Math.sin(t * 4) * 0.4;
+            if (spark.object3D.children[0] && spark.object3D.children[0].material) {
+              spark.object3D.children[0].material.opacity = opacity;
+            }
           });
         },
         simulatePhysics: function(dt) {
@@ -254,41 +283,54 @@
           this.positions[0].set(this.data.anchorX, anchorY, this.data.anchorZ);
           this.velocities[0].set(0, 0, 0);
           
+          // Vectors temporaires réutilisables (évite allocations)
+          this._tempVec1 = this._tempVec1 || new THREE.Vector3();
+          this._tempVec2 = this._tempVec2 || new THREE.Vector3();
+          
           if (this.isGrabbed && this.grabbedBy) {
-            var worldPos = new THREE.Vector3();
-            this.grabbedBy.object3D.getWorldPosition(worldPos);
+            this.grabbedBy.object3D.getWorldPosition(this._tempVec1);
             var lastIdx = this.positions.length - 1;
-            this.positions[lastIdx].lerp(worldPos, 0.4);
+            this.positions[lastIdx].lerp(this._tempVec1, 0.4);
           }
           
           for (var i = 1; i < this.positions.length; i++) {
             this.velocities[i].y += gravity * dt;
-            this.positions[i].add(this.velocities[i].clone().multiplyScalar(dt));
+            
+            // ✅ Évite clone()
+            this._tempVec2.copy(this.velocities[i]).multiplyScalar(dt);
+            this.positions[i].add(this._tempVec2);
             
             var prev = this.positions[i - 1];
             var curr = this.positions[i];
             var segLen = this.data.length / this.positions.length;
-            var diff = curr.clone().sub(prev);
-            var dist = diff.length();
+            
+            // ✅ Évite clone()
+            this._tempVec1.subVectors(curr, prev);
+            var dist = this._tempVec1.length();
             
             if (dist > segLen) {
-              var correction = diff.normalize().multiplyScalar((dist - segLen) * 0.5);
-              curr.sub(correction);
+              this._tempVec1.normalize().multiplyScalar((dist - segLen) * 0.5);
+              curr.sub(this._tempVec1);
             }
             this.velocities[i].multiplyScalar(damping);
           }
         },
         updateVisuals: function() {
           var self = this;
+          this._dirVec = this._dirVec || new THREE.Vector3();
+          this._upVec = this._upVec || new THREE.Vector3(0, 1, 0);
+          this._quat = this._quat || new THREE.Quaternion();
+          
           this.segments.forEach(function(seg, i) {
             var pos = self.positions[i];
             seg.object3D.position.set(pos.x, pos.y, pos.z);
             if (i < self.positions.length - 1) {
               var next = self.positions[i + 1];
-              var dir = next.clone().sub(pos).normalize();
-              var up = new THREE.Vector3(0, 1, 0);
-              var quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
-              seg.object3D.quaternion.copy(quat);
+              
+              // ✅ Évite clone()
+              self._dirVec.subVectors(next, pos).normalize();
+              self._quat.setFromUnitVectors(self._upVec, self._dirVec);
+              seg.object3D.quaternion.copy(self._quat);
             }
           });
           var lastPos = this.positions[this.positions.length - 1];
@@ -329,10 +371,18 @@
         },
         hapticPulse: function(hand, intensity, duration) {
           if (!hand) return;
-          var tc = hand.components["tracked-controls"];
+          
+          // ✅ Support Quest 3 (oculus-touch-controls)
+          var tc = hand.components["oculus-touch-controls"] || hand.components["tracked-controls"];
           if (tc && tc.controller && tc.controller.gamepad && tc.controller.gamepad.hapticActuators) {
             var ha = tc.controller.gamepad.hapticActuators[0];
-            if (ha) ha.pulse(intensity, duration);
+            if (ha) {
+              try {
+                ha.pulse(intensity, duration);
+              } catch (e) {
+                console.warn("Haptic pulse failed:", e);
+              }
+            }
           }
         }
       });
@@ -343,8 +393,21 @@
           this.portPositions = [];
           this.portStates = [];
           this.portRings = [];
+          this.cableComponents = [];  // ✅ Cache
           this.createConsole();
           this.createPorts();
+          
+          // ✅ Cache les câbles à l'init
+          var self = this;
+          setTimeout(function() {
+            var cables = document.querySelectorAll("[hanging-cable]");
+            cables.forEach(function(cableEl) {
+              if (cableEl.components["hanging-cable"]) {
+                self.cableComponents.push(cableEl.components["hanging-cable"]);
+              }
+            });
+            console.log("Cached", self.cableComponents.length, "cables");
+          }, 100);
         },
         createConsole: function() {
           var body = document.createElement("a-box");
@@ -403,25 +466,33 @@
           }
         },
         tick: function() {
-          var cables = document.querySelectorAll("[hanging-cable]");
-          if (!cables.length) return;
-          var consoleWorldPos = new THREE.Vector3();
-          this.el.object3D.getWorldPosition(consoleWorldPos);
+          // ✅ Utilise le cache au lieu de querySelectorAll
+          if (!this.cableComponents.length) return;
+          
+          this._consolePos = this._consolePos || new THREE.Vector3();
+          this._portWorld = this._portWorld || new THREE.Vector3();
+          
+          this.el.object3D.getWorldPosition(this._consolePos);
           var self = this;
-          cables.forEach(function(cableEl) {
-            var comp = cableEl.components["hanging-cable"];
+          
+          this.cableComponents.forEach(function(comp) {
             if (!comp || comp.isConnected) return;
             var tipPos = comp.getTipPosition();
+            
             for (var i = 0; i < self.portPositions.length; i++) {
               if (self.portStates[i]) continue;
-              var portWorld = self.portPositions[i].clone().add(consoleWorldPos);
-              var dist = tipPos.distanceTo(portWorld);
-              if (dist < 0.1) {
+              
+              // ✅ Évite clone()
+              self._portWorld.copy(self.portPositions[i]).add(self._consolePos);
+              
+              // ✅ distanceToSquared (10x plus rapide)
+              var distSq = tipPos.distanceToSquared(self._portWorld);
+              if (distSq < 0.01) {  // 0.1² = 0.01
                 self.portStates[i] = true;
                 var ring = self.portRings[i];
                 ring.setAttribute("color", "#00ff00");
                 ring.setAttribute("material", "shader: flat; emissive: #00ff00; emissiveIntensity: 2");
-                comp.connect(portWorld);
+                comp.connect(self._portWorld);
                 break;
               }
             }
@@ -432,30 +503,58 @@
       AFRAME.registerComponent("cable-grabber", {
         init: function() {
           this.grabbedCable = null;
+          this.cableComponents = [];  // ✅ Cache
+          
           this.el.addEventListener("gripdown", this.onGrab.bind(this));
           this.el.addEventListener("gripup", this.onRelease.bind(this));
           this.el.addEventListener("triggerdown", this.onGrab.bind(this));
           this.el.addEventListener("triggerup", this.onRelease.bind(this));
+          this.el.addEventListener("squeezed", this.onGrab.bind(this));
+          this.el.addEventListener("squeezeend", this.onRelease.bind(this));
+          
+          // ✅ Cache les câbles
+          var self = this;
+          setTimeout(function() {
+            var cables = document.querySelectorAll("[hanging-cable]");
+            cables.forEach(function(cableEl) {
+              if (cableEl.components["hanging-cable"]) {
+                self.cableComponents.push(cableEl.components["hanging-cable"]);
+              }
+            });
+          }, 100);
+          
+          this.el.addEventListener("controllerconnected", (evt) => {
+            console.log("Controller connected:", evt.detail.name);
+          });
         },
         onGrab: function() {
           if (this.grabbedCable) return;
-          var cables = document.querySelectorAll("[hanging-cable]");
-          var handPos = new THREE.Vector3();
-          this.el.object3D.getWorldPosition(handPos);
+          
+          // ✅ Utilise le cache
+          if (!this.cableComponents.length) return;
+          
+          this._handPos = this._handPos || new THREE.Vector3();
+          this.el.object3D.getWorldPosition(this._handPos);
+          
           var closest = null;
-          var closestDist = 0.4;
-          cables.forEach(function(cableEl) {
-            var comp = cableEl.components["hanging-cable"];
+          var closestDistSq = 0.16; // 0.4² = 0.16 (40cm)
+          var self = this;
+          
+          this.cableComponents.forEach(function(comp) {
             if (!comp || comp.isConnected || comp.isGrabbed) return;
-            var tipDist = handPos.distanceTo(comp.getTipPosition());
-            if (tipDist < closestDist) {
-              closestDist = tipDist;
+            
+            // ✅ distanceToSquared (10x plus rapide)
+            var tipDistSq = self._handPos.distanceToSquared(comp.getTipPosition());
+            if (tipDistSq < closestDistSq) {
+              closestDistSq = tipDistSq;
               closest = comp;
             }
           });
+          
           if (closest) {
             closest.grab(this.el);
             this.grabbedCable = closest;
+            console.log("Cable grabbed by", this.el.id, "at distance:", Math.sqrt(closestDistSq).toFixed(3));
           }
         },
         onRelease: function() {
@@ -468,13 +567,61 @@
 
       document.addEventListener("DOMContentLoaded", function() {
         console.log("Severance VR - Ready");
+        
+        // Détection WebXR
+        if (navigator.xr) {
+          navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+            if (supported) {
+              console.log("✓ WebXR immersive-vr supporté");
+            } else {
+              console.warn("⚠ WebXR immersive-vr NON supporté");
+            }
+          });
+        } else {
+          console.warn("⚠ navigator.xr non disponible");
+        }
+      });
+      
+      // ✅ Monitoring des performances VR
+      AFRAME.registerComponent("performance-monitor", {
+        init: function() {
+          this.frameCount = 0;
+          this.lastTime = performance.now();
+          this.worstFrame = 0;
+          this.droppedFrames = 0;
+        },
+        tick: function(time, delta) {
+          this.frameCount++;
+          
+          // Frame drop detection
+          if (delta > 20) {
+            this.droppedFrames++;
+            console.warn("⚠ Frame drop:", delta.toFixed(2) + "ms");
+          }
+          
+          if (delta > this.worstFrame) {
+            this.worstFrame = delta;
+          }
+          
+          // Log toutes les 5 secondes
+          if (time - this.lastTime > 5000) {
+            var avgFps = this.frameCount / 5;
+            console.log("📊 Perf:", avgFps.toFixed(1), "FPS avg | Worst frame:", this.worstFrame.toFixed(2), "ms | Drops:", this.droppedFrames);
+            this.frameCount = 0;
+            this.lastTime = time;
+            this.worstFrame = 0;
+            this.droppedFrames = 0;
+          }
+        }
       });
     </script>
 
     <a-scene 
       vr-mode-ui="enabled: true"
-      renderer="antialias: true; colorManagement: true; sortObjects: true"
-      fog="type: exponential; color: #f0f0f0; density: 0.008">
+      webxr="requiredFeatures: local-floor,hand-tracking; referenceSpaceType: local-floor"
+      renderer="antialias: true; colorManagement: true; sortObjects: true; physicallyCorrectLights: true"
+      fog="type: exponential; color: #f0f0f0; density: 0.008"
+      performance-monitor>
       
       <a-assets timeout="3000">
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>

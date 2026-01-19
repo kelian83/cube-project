@@ -1,265 +1,633 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Severance x Bang & Olufsen - WebXR Experience</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <title>Severance VR Experience - Acte 1</title>
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
     <style>
-      body {
-        margin: 0;
-        padding: 0;
+      body { margin: 0; overflow: hidden; }
+      .a-enter-vr-button { 
+        background-color: #1a1a1a !important; 
+        border: 2px solid #00ff00 !important;
+      }
+      #ui-overlay {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        font-family: monospace;
+        font-size: 18px;
+        background: rgba(0,0,0,0.7);
+        padding: 15px 30px;
+        border-radius: 5px;
+        z-index: 9999;
+        pointer-events: none;
+        transition: opacity 0.5s;
+      }
+      #progress-bar {
+        width: 200px;
+        height: 8px;
+        background: #333;
+        border-radius: 4px;
+        margin-top: 10px;
         overflow: hidden;
+      }
+      #progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #ff0000, #00ff00);
+        transition: width 0.3s ease;
       }
     </style>
   </head>
   <body>
+    <div id="ui-overlay">
+      <div>CABLES: <span id="cable-count">0</span>/4</div>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
+
+    <script>
+      window.SEVERANCE = {
+        connectedCables: 0,
+        totalCables: 4,
+        isDiscoMode: false,
+        ceilingLights: [],
+        rgbLights: [],
+        speakers: []
+      };
+
+      function updateUI() {
+        document.getElementById("cable-count").textContent = window.SEVERANCE.connectedCables;
+        document.getElementById("progress-fill").style.width = 
+          (window.SEVERANCE.connectedCables / window.SEVERANCE.totalCables * 100) + "%";
+      }
+
+      function triggerDiscoMode() {
+        if (window.SEVERANCE.isDiscoMode) return;
+        window.SEVERANCE.isDiscoMode = true;
+        console.log("SEQUENCE COMPLETE - DISCO MODE");
+        
+        document.getElementById("ui-overlay").style.opacity = "0";
+        
+        window.SEVERANCE.ceilingLights.forEach((light, i) => {
+          setTimeout(() => {
+            light.setAttribute("animation", {
+              property: "light.intensity",
+              to: 0,
+              dur: 1500,
+              easing: "easeOutQuad"
+            });
+          }, i * 150);
+        });
+
+        setTimeout(() => {
+          document.querySelector("a-scene").setAttribute("fog", "type: exponential; color: #0a0510; density: 0.04");
+        }, 1000);
+
+        setTimeout(() => {
+          window.SEVERANCE.rgbLights.forEach(light => {
+            light.setAttribute("visible", "true");
+            if (light.components["rgb-disco"]) light.components["rgb-disco"].start();
+          });
+        }, 2000);
+
+        setTimeout(() => {
+          window.SEVERANCE.speakers.forEach(speaker => {
+            speaker.setAttribute("speaker-vibrate", "active: true; intensity: 0.04");
+          });
+        }, 2500);
+      }
+
+      AFRAME.registerComponent("rgb-disco", {
+        schema: {
+          speed: { type: "number", default: 1 },
+          colorSet: { type: "string", default: "purple" }
+        },
+        init: function() {
+          this.time = Math.random() * 100;
+          this.active = false;
+          this.colors = {
+            purple: [[148, 0, 211], [75, 0, 130], [238, 130, 238]],
+            cyan: [[0, 255, 255], [0, 206, 209], [64, 224, 208]],
+            blue: [[0, 0, 255], [30, 144, 255], [65, 105, 225]]
+          };
+        },
+        start: function() { this.active = true; },
+        tick: function(time, delta) {
+          if (!this.active) return;
+          this.time += delta * 0.001 * this.data.speed;
+          var colorArr = this.colors[this.data.colorSet] || this.colors.purple;
+          var idx = Math.floor(Math.abs(Math.sin(this.time)) * colorArr.length);
+          var color = colorArr[idx % colorArr.length];
+          var intensity = 0.5 + Math.sin(this.time * 2) * 0.5;
+          this.el.setAttribute("light", {
+            intensity: intensity * 3,
+            color: "rgb(" + color[0] + ", " + color[1] + ", " + color[2] + ")"
+          });
+        }
+      });
+
+      AFRAME.registerComponent("speaker-vibrate", {
+        schema: {
+          active: { type: "boolean", default: false },
+          intensity: { type: "number", default: 0.02 },
+          frequency: { type: "number", default: 8 }
+        },
+        init: function() {
+          this.basePos = null;
+        },
+        tick: function(time) {
+          if (!this.data.active) return;
+          if (!this.basePos) {
+            var p = this.el.getAttribute("position");
+            this.basePos = {x: p.x, y: p.y, z: p.z};
+          }
+          var i = this.data.intensity;
+          var f = this.data.frequency;
+          var vx = Math.sin(time * 0.001 * f * Math.PI) * i;
+          var vz = Math.cos(time * 0.001 * f * 1.3 * Math.PI) * i * 0.5;
+          this.el.object3D.position.x = this.basePos.x + vx;
+          this.el.object3D.position.z = this.basePos.z + vz;
+        }
+      });
+
+      AFRAME.registerComponent("hanging-cable", {
+        schema: {
+          cableId: { type: "int", default: 0 },
+          anchorX: { type: "number", default: 0 },
+          anchorZ: { type: "number", default: 0 },
+          length: { type: "number", default: 1.5 }
+        },
+        init: function() {
+          this.isConnected = false;
+          this.isGrabbed = false;
+          this.grabbedBy = null;
+          this.segments = [];
+          this.positions = [];
+          this.velocities = [];
+          this.tipEntity = null;
+          this.sparksEntity = null;
+          
+          var anchorY = 2.95;
+          var count = 10;
+          for (var i = 0; i < count; i++) {
+            var y = anchorY - (i * this.data.length / count);
+            this.positions.push(new THREE.Vector3(this.data.anchorX, y, this.data.anchorZ));
+            this.velocities.push(new THREE.Vector3(0, 0, 0));
+          }
+          this.createVisuals();
+        },
+        createVisuals: function() {
+          var self = this;
+          for (var i = 0; i < this.positions.length; i++) {
+            var seg = document.createElement("a-cylinder");
+            seg.setAttribute("radius", "0.02");
+            seg.setAttribute("height", "0.15");
+            seg.setAttribute("color", "#1a1a1a");
+            seg.setAttribute("material", "roughness: 0.7; metalness: 0.1");
+            seg.classList.add("grabbable");
+            this.el.appendChild(seg);
+            this.segments.push(seg);
+          }
+          
+          this.tipEntity = document.createElement("a-entity");
+          this.tipEntity.classList.add("grabbable", "cable-tip");
+          
+          var jackBody = document.createElement("a-cylinder");
+          jackBody.setAttribute("radius", "0.025");
+          jackBody.setAttribute("height", "0.1");
+          jackBody.setAttribute("color", "#c0c0c0");
+          jackBody.setAttribute("material", "roughness: 0.15; metalness: 0.95");
+          this.tipEntity.appendChild(jackBody);
+          
+          var jackTip = document.createElement("a-cone");
+          jackTip.setAttribute("radius-bottom", "0.02");
+          jackTip.setAttribute("radius-top", "0.008");
+          jackTip.setAttribute("height", "0.04");
+          jackTip.setAttribute("color", "#e8e8e8");
+          jackTip.setAttribute("material", "roughness: 0.1; metalness: 0.98");
+          jackTip.setAttribute("position", "0 -0.07 0");
+          this.tipEntity.appendChild(jackTip);
+          
+          this.sparksEntity = document.createElement("a-entity");
+          this.sparksEntity.setAttribute("position", "0 -0.1 0");
+          for (var j = 0; j < 6; j++) {
+            var spark = document.createElement("a-sphere");
+            spark.setAttribute("radius", "0.012");
+            spark.setAttribute("color", "#00ff44");
+            spark.setAttribute("material", "shader: flat; emissive: #00ff44; emissiveIntensity: 2");
+            spark.classList.add("spark");
+            this.sparksEntity.appendChild(spark);
+          }
+          this.tipEntity.appendChild(this.sparksEntity);
+          this.el.appendChild(this.tipEntity);
+        },
+        tick: function(time, delta) {
+          if (this.isConnected) return;
+          var dt = Math.min(delta / 1000, 0.033);
+          this.animateSparks(time);
+          this.simulatePhysics(dt);
+          this.updateVisuals();
+        },
+        animateSparks: function(time) {
+          if (!this.sparksEntity) return;
+          var sparks = this.sparksEntity.querySelectorAll(".spark");
+          sparks.forEach(function(spark, i) {
+            var t = time * 0.004 + i * 1.05;
+            var r = 0.03 + Math.sin(t) * 0.02;
+            var angle = t * 2;
+            spark.setAttribute("position", {
+              x: Math.cos(angle) * r,
+              y: Math.sin(t * 3) * 0.025,
+              z: Math.sin(angle) * r
+            });
+            spark.setAttribute("opacity", 0.4 + Math.sin(t * 4) * 0.4);
+          });
+        },
+        simulatePhysics: function(dt) {
+          var gravity = -6;
+          var damping = 0.88;
+          var anchorY = 2.95;
+          
+          this.positions[0].set(this.data.anchorX, anchorY, this.data.anchorZ);
+          this.velocities[0].set(0, 0, 0);
+          
+          if (this.isGrabbed && this.grabbedBy) {
+            var worldPos = new THREE.Vector3();
+            this.grabbedBy.object3D.getWorldPosition(worldPos);
+            var lastIdx = this.positions.length - 1;
+            this.positions[lastIdx].lerp(worldPos, 0.4);
+          }
+          
+          for (var i = 1; i < this.positions.length; i++) {
+            this.velocities[i].y += gravity * dt;
+            this.positions[i].add(this.velocities[i].clone().multiplyScalar(dt));
+            
+            var prev = this.positions[i - 1];
+            var curr = this.positions[i];
+            var segLen = this.data.length / this.positions.length;
+            var diff = curr.clone().sub(prev);
+            var dist = diff.length();
+            
+            if (dist > segLen) {
+              var correction = diff.normalize().multiplyScalar((dist - segLen) * 0.5);
+              curr.sub(correction);
+            }
+            this.velocities[i].multiplyScalar(damping);
+          }
+        },
+        updateVisuals: function() {
+          var self = this;
+          this.segments.forEach(function(seg, i) {
+            var pos = self.positions[i];
+            seg.object3D.position.set(pos.x, pos.y, pos.z);
+            if (i < self.positions.length - 1) {
+              var next = self.positions[i + 1];
+              var dir = next.clone().sub(pos).normalize();
+              var up = new THREE.Vector3(0, 1, 0);
+              var quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+              seg.object3D.quaternion.copy(quat);
+            }
+          });
+          var lastPos = this.positions[this.positions.length - 1];
+          this.tipEntity.object3D.position.set(lastPos.x, lastPos.y - 0.08, lastPos.z);
+        },
+        grab: function(hand) {
+          if (this.isConnected) return;
+          this.isGrabbed = true;
+          this.grabbedBy = hand;
+          this.hapticPulse(hand, 0.3, 50);
+        },
+        release: function() {
+          this.isGrabbed = false;
+          this.grabbedBy = null;
+        },
+        getTipPosition: function() {
+          var lastPos = this.positions[this.positions.length - 1];
+          return new THREE.Vector3(lastPos.x, lastPos.y - 0.08, lastPos.z);
+        },
+        connect: function(portWorldPos) {
+          this.isConnected = true;
+          this.isGrabbed = false;
+          this.grabbedBy = null;
+          var lastIdx = this.positions.length - 1;
+          this.positions[lastIdx].set(portWorldPos.x, portWorldPos.y + 0.08, portWorldPos.z);
+          this.tipEntity.object3D.position.set(portWorldPos.x, portWorldPos.y, portWorldPos.z);
+          this.sparksEntity.setAttribute("visible", "false");
+          window.SEVERANCE.connectedCables++;
+          updateUI();
+          console.log("Cable " + (this.data.cableId + 1) + " connected!");
+          var leftHand = document.getElementById("leftHand");
+          var rightHand = document.getElementById("rightHand");
+          this.hapticPulse(leftHand, 1, 200);
+          this.hapticPulse(rightHand, 1, 200);
+          if (window.SEVERANCE.connectedCables >= window.SEVERANCE.totalCables) {
+            setTimeout(triggerDiscoMode, 500);
+          }
+        },
+        hapticPulse: function(hand, intensity, duration) {
+          if (!hand) return;
+          var tc = hand.components["tracked-controls"];
+          if (tc && tc.controller && tc.controller.gamepad && tc.controller.gamepad.hapticActuators) {
+            var ha = tc.controller.gamepad.hapticActuators[0];
+            if (ha) ha.pulse(intensity, duration);
+          }
+        }
+      });
+
+      AFRAME.registerComponent("bo-console", {
+        schema: { ports: { type: "int", default: 4 } },
+        init: function() {
+          this.portPositions = [];
+          this.portStates = [];
+          this.portRings = [];
+          this.createConsole();
+          this.createPorts();
+        },
+        createConsole: function() {
+          var body = document.createElement("a-box");
+          body.setAttribute("width", "0.6");
+          body.setAttribute("height", "0.12");
+          body.setAttribute("depth", "0.3");
+          body.setAttribute("color", "#b8b8b8");
+          body.setAttribute("material", "roughness: 0.25; metalness: 0.9");
+          body.setAttribute("position", "0 0.06 0");
+          this.el.appendChild(body);
+          
+          var front = document.createElement("a-box");
+          front.setAttribute("width", "0.58");
+          front.setAttribute("height", "0.1");
+          front.setAttribute("depth", "0.02");
+          front.setAttribute("color", "#1a1a1a");
+          front.setAttribute("material", "roughness: 0.4; metalness: 0.2");
+          front.setAttribute("position", "0 0.06 0.15");
+          this.el.appendChild(front);
+          
+          var logo = document.createElement("a-text");
+          logo.setAttribute("value", "B&O");
+          logo.setAttribute("color", "#c0c0c0");
+          logo.setAttribute("width", "0.8");
+          logo.setAttribute("align", "center");
+          logo.setAttribute("position", "0 0.1 0.162");
+          this.el.appendChild(logo);
+        },
+        createPorts: function() {
+          var spacing = 0.12;
+          var startX = -spacing * 1.5;
+          var y = 0.04;
+          var z = 0.16;
+          for (var i = 0; i < this.data.ports; i++) {
+            var x = startX + i * spacing;
+            var port = document.createElement("a-cylinder");
+            port.setAttribute("radius", "0.022");
+            port.setAttribute("height", "0.03");
+            port.setAttribute("color", "#050505");
+            port.setAttribute("rotation", "90 0 0");
+            port.setAttribute("position", x + " " + y + " " + z);
+            this.el.appendChild(port);
+            
+            var ring = document.createElement("a-torus");
+            ring.setAttribute("radius", "0.032");
+            ring.setAttribute("radius-tubular", "0.006");
+            ring.setAttribute("color", "#ff0000");
+            ring.setAttribute("material", "shader: flat; emissive: #ff0000; emissiveIntensity: 1.5");
+            ring.setAttribute("rotation", "90 0 0");
+            ring.setAttribute("position", x + " " + y + " " + (z + 0.01));
+            this.el.appendChild(ring);
+            
+            this.portPositions.push(new THREE.Vector3(x, y, z));
+            this.portStates.push(false);
+            this.portRings.push(ring);
+          }
+        },
+        tick: function() {
+          var cables = document.querySelectorAll("[hanging-cable]");
+          if (!cables.length) return;
+          var consoleWorldPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(consoleWorldPos);
+          var self = this;
+          cables.forEach(function(cableEl) {
+            var comp = cableEl.components["hanging-cable"];
+            if (!comp || comp.isConnected) return;
+            var tipPos = comp.getTipPosition();
+            for (var i = 0; i < self.portPositions.length; i++) {
+              if (self.portStates[i]) continue;
+              var portWorld = self.portPositions[i].clone().add(consoleWorldPos);
+              var dist = tipPos.distanceTo(portWorld);
+              if (dist < 0.1) {
+                self.portStates[i] = true;
+                var ring = self.portRings[i];
+                ring.setAttribute("color", "#00ff00");
+                ring.setAttribute("material", "shader: flat; emissive: #00ff00; emissiveIntensity: 2");
+                comp.connect(portWorld);
+                break;
+              }
+            }
+          });
+        }
+      });
+
+      AFRAME.registerComponent("cable-grabber", {
+        init: function() {
+          this.grabbedCable = null;
+          this.el.addEventListener("gripdown", this.onGrab.bind(this));
+          this.el.addEventListener("gripup", this.onRelease.bind(this));
+          this.el.addEventListener("triggerdown", this.onGrab.bind(this));
+          this.el.addEventListener("triggerup", this.onRelease.bind(this));
+        },
+        onGrab: function() {
+          if (this.grabbedCable) return;
+          var cables = document.querySelectorAll("[hanging-cable]");
+          var handPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+          var closest = null;
+          var closestDist = 0.4;
+          cables.forEach(function(cableEl) {
+            var comp = cableEl.components["hanging-cable"];
+            if (!comp || comp.isConnected || comp.isGrabbed) return;
+            var tipDist = handPos.distanceTo(comp.getTipPosition());
+            if (tipDist < closestDist) {
+              closestDist = tipDist;
+              closest = comp;
+            }
+          });
+          if (closest) {
+            closest.grab(this.el);
+            this.grabbedCable = closest;
+          }
+        },
+        onRelease: function() {
+          if (this.grabbedCable) {
+            this.grabbedCable.release();
+            this.grabbedCable = null;
+          }
+        }
+      });
+
+      document.addEventListener("DOMContentLoaded", function() {
+        console.log("Severance VR - Ready");
+      });
+    </script>
+
     <a-scene 
       vr-mode-ui="enabled: true"
-      webxr="requiredFeatures: hit-test,local-floor; optionalFeatures: hand-tracking"
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      background="color: #000000"
-      fog="type: exponential; color: #000000; density: 0"
-      state-manager
-    >
-      <!-- ============================================ -->
-      <!-- ASSETS -->
-      <!-- ============================================ -->
-      <a-assets>
-        <audio id="plug-sound" src="https://cdn.freesound.org/previews/256/256113_3263906-lq.mp3" preload="auto"></audio>
-        <audio id="success-sound" src="https://cdn.freesound.org/previews/341/341695_5858296-lq.mp3" preload="auto"></audio>
+      renderer="antialias: true; colorManagement: true; sortObjects: true"
+      fog="type: exponential; color: #f0f0f0; density: 0.008">
+      
+      <a-assets timeout="3000">
+        <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
+        <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
+        <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>
+        <a-mixin id="dark-metal" material="color: #2a2a2a; roughness: 0.3; metalness: 0.7"></a-mixin>
       </a-assets>
 
-      <!-- ============================================ -->
-      <!-- ENVIRONNEMENT - Architecture Severance -->
-      <!-- ============================================ -->
-      
-      <!-- Vide Noir Infini (Skybox sombre) -->
-      <a-sky color="#000000"></a-sky>
+      <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="8" mixin="floor-carpet"></a-plane>
+      <a-plane position="0 3 0" rotation="90 0 0" width="10" height="8" material="color: #e8e8e8; roughness: 0.3"></a-plane>
 
-      <!-- Plateforme - Sol Moquette Vert Sauge -->
-      <a-plane
-        id="floor"
-        position="0 0 0"
-        rotation="-90 0 0"
-        width="4"
-        height="4"
-        material="color: #7DA17E; roughness: 0.9; metalness: 0"
-      ></a-plane>
-
-      <!-- Mur Gauche - Blanc Laqué -->
-      <a-plane
-        id="wall-left"
-        position="-2 1.5 0"
-        rotation="0 90 0"
-        width="4"
-        height="3"
-        material="color: #FFFFFF; roughness: 0.1; metalness: 0.1"
-      ></a-plane>
-
-      <!-- Mur Droit - Blanc Laqué -->
-      <a-plane
-        id="wall-right"
-        position="2 1.5 0"
-        rotation="0 -90 0"
-        width="4"
-        height="3"
-        material="color: #FFFFFF; roughness: 0.1; metalness: 0.1"
-      ></a-plane>
-
-      <!-- Mur Fond - Blanc Laqué -->
-      <a-plane
-        id="wall-back"
-        position="0 1.5 -2"
-        rotation="0 0 0"
-        width="4"
-        height="3"
-        material="color: #FFFFFF; roughness: 0.1; metalness: 0.1"
-      ></a-plane>
-
-      <!-- ============================================ -->
-      <!-- PLAFOND - Grille de Dalles Lumineuses -->
-      <!-- ============================================ -->
-      <a-entity id="ceiling-lights" position="0 2.9 0">
-        <!-- Rangée 1 -->
-        <a-box class="ceiling-light" position="-1.2 0 -1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="0 0 -1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="1.2 0 -1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <!-- Rangée 2 -->
-        <a-box class="ceiling-light" position="-1.2 0 0" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="0 0 0" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="1.2 0 0" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <!-- Rangée 3 -->
-        <a-box class="ceiling-light" position="-1.2 0 1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="0 0 1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-        <a-box class="ceiling-light" position="1.2 0 1.2" width="0.8" height="0.05" depth="0.8" 
-               material="color: #FFFFFF; emissive: #FFFFFF; emissiveIntensity: 0.8"></a-box>
-      </a-entity>
-
-      <!-- Lumières RGB pour Party Mode (désactivées au départ) -->
-      <a-entity id="disco-lights" visible="false">
-        <a-light id="disco-light-1" type="spot" color="#0000FF" intensity="0" position="-1 2.5 -1" 
-                 target="#floor" angle="45" penumbra="0.5"
-                 animation__rotate="property: rotation; to: 0 360 0; dur: 4000; loop: true; easing: linear; pauseEvents: pauseAnimation; resumeEvents: resumeAnimation"></a-light>
-        <a-light id="disco-light-2" type="spot" color="#8B00FF" intensity="0" position="1 2.5 -1" 
-                 target="#floor" angle="45" penumbra="0.5"
-                 animation__rotate="property: rotation; to: 0 -360 0; dur: 3000; loop: true; easing: linear; pauseEvents: pauseAnimation; resumeEvents: resumeAnimation"></a-light>
-        <a-light id="disco-light-3" type="spot" color="#FF00FF" intensity="0" position="0 2.5 1" 
-                 target="#floor" angle="45" penumbra="0.5"
-                 animation__rotate="property: rotation; to: 360 0 0; dur: 5000; loop: true; easing: linear; pauseEvents: pauseAnimation; resumeEvents: resumeAnimation"></a-light>
-      </a-entity>
-
-      <!-- Éclairage ambiant -->
-      <a-light type="ambient" color="#404040" intensity="0.3"></a-light>
-      <a-light type="directional" position="0 3 1" intensity="0.5" color="#FFFFFF"></a-light>
-
-      <!-- ============================================ -->
-      <!-- BUREAU -->
-      <!-- ============================================ -->
-      <a-entity id="desk" position="0 0 -0.8">
-        <!-- Plateau -->
-        <a-box position="0 0.75 0" width="1.2" height="0.05" depth="0.6" 
-               material="color: #2C2C2C; roughness: 0.3; metalness: 0.2"></a-box>
-        <!-- Pieds -->
-        <a-box position="-0.5 0.375 0.2" width="0.05" height="0.75" depth="0.05" 
-               material="color: #1A1A1A"></a-box>
-        <a-box position="0.5 0.375 0.2" width="0.05" height="0.75" depth="0.05" 
-               material="color: #1A1A1A"></a-box>
-        <a-box position="-0.5 0.375 -0.2" width="0.05" height="0.75" depth="0.05" 
-               material="color: #1A1A1A"></a-box>
-        <a-box position="0.5 0.375 -0.2" width="0.05" height="0.75" depth="0.05" 
-               material="color: #1A1A1A"></a-box>
-      </a-entity>
-
-      <!-- ============================================ -->
-      <!-- CONSOLE BANG & OLUFSEN -->
-      <!-- ============================================ -->
-      <a-entity id="bo-console" position="0 0.82 -0.8">
-        <!-- Boîtier Principal Alu -->
-        <a-box position="0 0.05 0" width="0.4" height="0.1" depth="0.15" 
-               material="color: #C0C0C0; roughness: 0.2; metalness: 0.8"></a-box>
-        
-        <!-- Port 1 -->
-        <a-entity id="port-1" class="cable-port" position="-0.12 0.05 0.08" cable-port="portId: 1">
-          <a-cylinder rotation="90 0 0" radius="0.015" height="0.02" 
-                      material="color: #1A1A1A; metalness: 0.9"></a-cylinder>
-          <a-ring id="ring-1" class="port-ring" rotation="90 0 0" radius-inner="0.012" radius-outer="0.018" 
-                  material="color: #FF0000; emissive: #FF0000; emissiveIntensity: 0.8; side: double"></a-ring>
+      <a-entity id="ceiling-lights">
+        <a-entity class="ceiling-light-unit" position="-2.5 2.98 -2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
         </a-entity>
-        
-        <!-- Port 2 -->
-        <a-entity id="port-2" class="cable-port" position="-0.04 0.05 0.08" cable-port="portId: 2">
-          <a-cylinder rotation="90 0 0" radius="0.015" height="0.02" 
-                      material="color: #1A1A1A; metalness: 0.9"></a-cylinder>
-          <a-ring id="ring-2" class="port-ring" rotation="90 0 0" radius-inner="0.012" radius-outer="0.018" 
-                  material="color: #FF0000; emissive: #FF0000; emissiveIntensity: 0.8; side: double"></a-ring>
+        <a-entity class="ceiling-light-unit" position="0 2.98 -2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
         </a-entity>
-        
-        <!-- Port 3 -->
-        <a-entity id="port-3" class="cable-port" position="0.04 0.05 0.08" cable-port="portId: 3">
-          <a-cylinder rotation="90 0 0" radius="0.015" height="0.02" 
-                      material="color: #1A1A1A; metalness: 0.9"></a-cylinder>
-          <a-ring id="ring-3" class="port-ring" rotation="90 0 0" radius-inner="0.012" radius-outer="0.018" 
-                  material="color: #FF0000; emissive: #FF0000; emissiveIntensity: 0.8; side: double"></a-ring>
+        <a-entity class="ceiling-light-unit" position="2.5 2.98 -2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
         </a-entity>
-        
-        <!-- Port 4 -->
-        <a-entity id="port-4" class="cable-port" position="0.12 0.05 0.08" cable-port="portId: 4">
-          <a-cylinder rotation="90 0 0" radius="0.015" height="0.02" 
-                      material="color: #1A1A1A; metalness: 0.9"></a-cylinder>
-          <a-ring id="ring-4" class="port-ring" rotation="90 0 0" radius-inner="0.012" radius-outer="0.018" 
-                  material="color: #FF0000; emissive: #FF0000; emissiveIntensity: 0.8; side: double"></a-ring>
+        <a-entity class="ceiling-light-unit" position="-2.5 2.98 0">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
+        </a-entity>
+        <a-entity class="ceiling-light-unit" position="0 2.98 0">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.8" distance="5" decay="2" color="#f0f8ff"></a-light>
+        </a-entity>
+        <a-entity class="ceiling-light-unit" position="2.5 2.98 0">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
+        </a-entity>
+        <a-entity class="ceiling-light-unit" position="-2.5 2.98 2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
+        </a-entity>
+        <a-entity class="ceiling-light-unit" position="0 2.98 2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
+        </a-entity>
+        <a-entity class="ceiling-light-unit" position="2.5 2.98 2">
+          <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
+          <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
         </a-entity>
       </a-entity>
 
-      <!-- ============================================ -->
-      <!-- CÂBLES (Pendants du Plafond) -->
-      <!-- ============================================ -->
-      <a-entity id="cables-container">
-        <!-- Câble 1 -->
-        <a-entity id="cable-1" class="cable" cable-system="cableId: 1; startPos: -0.12 2.8 -0.8; color: #3498db">
+      <a-plane position="0 1.5 -4" width="10" height="3" mixin="wall-panel"></a-plane>
+      <a-plane position="0 1.5 4" rotation="0 180 0" width="10" height="3" mixin="wall-panel"></a-plane>
+      <a-plane position="-5 1.5 0" rotation="0 90 0" width="8" height="3" mixin="wall-panel"></a-plane>
+      <a-plane position="5 1.5 0" rotation="0 -90 0" width="8" height="3" mixin="wall-panel"></a-plane>
+
+      <a-entity id="main-desk" position="0 0 0">
+        <a-box position="0 0.75 0" width="2" height="0.05" depth="1" material="color: #e8e8e8; roughness: 0.15; metalness: 0.05"></a-box>
+        <a-box position="-0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
+        <a-box position="0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
+        <a-box position="-0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
+        <a-box position="0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
+      </a-entity>
+
+      <a-entity position="-0.65 0.78 0">
+        <a-box width="0.25" height="0.28" depth="0.25" material="color: #c9b99a; roughness: 0.7; metalness: 0"></a-box>
+        <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #003300; emissive: #00ff00; emissiveIntensity: 0.3"></a-box>
+        <a-box position="0 -0.08 0.126" width="0.12" height="0.01" depth="0.01" color="#1a1a1a"></a-box>
+      </a-entity>
+
+      <a-entity position="0.6 0.78 -0.15">
+        <a-box position="0 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #6a6a6a; roughness: 0.5"></a-box>
+        <a-box position="0.1 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #5a5a5a; roughness: 0.5"></a-box>
+        <a-box position="0.2 0.12 0" width="0.08" height="0.24" depth="0.22" material="color: #7a7a7a; roughness: 0.5"></a-box>
+      </a-entity>
+
+      <a-entity position="0.75 0.78 0.25">
+        <a-box width="0.12" height="0.15" depth="0.02" material="color: #2a2a2a; roughness: 0.3; metalness: 0.5"></a-box>
+        <a-box position="0 0 0.011" width="0.09" height="0.12" depth="0.005" material="color: #d4a574; roughness: 0.9"></a-box>
+      </a-entity>
+
+      <a-entity id="bo-console" position="0 0.78 0.2" bo-console="ports: 4"></a-entity>
+
+      <a-entity id="speaker-left" position="-4 0 -3" speaker-vibrate="active: false">
+        <a-cylinder position="0 0.1 0" radius="0.4" height="0.2" mixin="dark-metal"></a-cylinder>
+        <a-cylinder position="0 0.8 0" radius="0.35" height="1.2" mixin="dark-metal"></a-cylinder>
+        <a-cone position="0 1.5 0" radius-bottom="0.35" radius-top="0.5" height="0.4" mixin="aluminum"></a-cone>
+        <a-sphere position="0 1.8 0" radius="0.3" mixin="dark-metal"></a-sphere>
+        <a-torus position="0 0.5 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
+        <a-torus position="0 1.1 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
+      </a-entity>
+
+      <a-entity id="speaker-right" position="4 0 -3" speaker-vibrate="active: false">
+        <a-cylinder position="0 0.1 0" radius="0.4" height="0.2" mixin="dark-metal"></a-cylinder>
+        <a-cylinder position="0 0.8 0" radius="0.35" height="1.2" mixin="dark-metal"></a-cylinder>
+        <a-cone position="0 1.5 0" radius-bottom="0.35" radius-top="0.5" height="0.4" mixin="aluminum"></a-cone>
+        <a-sphere position="0 1.8 0" radius="0.3" mixin="dark-metal"></a-sphere>
+        <a-torus position="0 0.5 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
+        <a-torus position="0 1.1 0" radius="0.36" radius-tubular="0.02" rotation="90 0 0" mixin="aluminum"></a-torus>
+      </a-entity>
+
+      <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.8"></a-entity>
+      <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.6"></a-entity>
+      <a-entity id="cable-3" hanging-cable="cableId: 2; anchorX: 0.07; anchorZ: 0.15; length: 1.7"></a-entity>
+      <a-entity id="cable-4" hanging-cable="cableId: 3; anchorX: 0.2; anchorZ: 0.1; length: 1.9"></a-entity>
+
+      <a-entity position="0 2.95 0.12">
+        <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
+      </a-entity>
+
+      <a-entity id="disco-lights">
+        <a-entity id="rgb-1" position="-3 2.5 -2" visible="false">
+          <a-light type="spot" angle="40" penumbra="0.5" intensity="0" color="#9400d3" rgb-disco="speed: 1.2; colorSet: purple"></a-light>
         </a-entity>
-        
-        <!-- Câble 2 -->
-        <a-entity id="cable-2" class="cable" cable-system="cableId: 2; startPos: -0.04 2.8 -0.8; color: #e74c3c">
+        <a-entity id="rgb-2" position="3 2.5 -2" visible="false">
+          <a-light type="spot" angle="40" penumbra="0.5" intensity="0" color="#00ffff" rgb-disco="speed: 0.9; colorSet: cyan"></a-light>
         </a-entity>
-        
-        <!-- Câble 3 -->
-        <a-entity id="cable-3" class="cable" cable-system="cableId: 3; startPos: 0.04 2.8 -0.8; color: #2ecc71">
+        <a-entity id="rgb-3" position="-3 2.5 2" visible="false">
+          <a-light type="spot" angle="40" penumbra="0.5" intensity="0" color="#4169e1" rgb-disco="speed: 1.5; colorSet: blue"></a-light>
         </a-entity>
-        
-        <!-- Câble 4 -->
-        <a-entity id="cable-4" class="cable" cable-system="cableId: 4; startPos: 0.12 2.8 -0.8; color: #f39c12">
+        <a-entity id="rgb-4" position="3 2.5 2" visible="false">
+          <a-light type="spot" angle="40" penumbra="0.5" intensity="0" color="#ee82ee" rgb-disco="speed: 0.7; colorSet: purple"></a-light>
+        </a-entity>
+        <a-entity id="rgb-center" position="0 2.8 0" visible="false">
+          <a-light type="point" intensity="0" distance="8" color="#00ffff" rgb-disco="speed: 2; colorSet: cyan"></a-light>
         </a-entity>
       </a-entity>
 
-      <!-- ============================================ -->
-      <!-- ENCEINTES (Placeholders pour Party Mode) -->
-      <!-- ============================================ -->
-      <a-entity id="speaker-left" class="speaker" position="-1.8 0.5 -1" 
-                geometry="primitive: box; width: 0.3; height: 0.6; depth: 0.25"
-                material="color: #1A1A1A; roughness: 0.3; metalness: 0.5">
-      </a-entity>
-      <a-entity id="speaker-right" class="speaker" position="1.8 0.5 -1" 
-                geometry="primitive: box; width: 0.3; height: 0.6; depth: 0.25"
-                material="color: #1A1A1A; roughness: 0.3; metalness: 0.5">
+      <a-light type="ambient" color="#d0d0d0" intensity="0.4"></a-light>
+
+      <a-entity id="rig" position="0 0 2">
+        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
+          <a-cursor color="#00ff00" fuse="false" raycaster="objects: .grabbable"></a-cursor>
+        </a-camera>
       </a-entity>
 
-      <!-- ============================================ -->
-      <!-- PLAYER RIG (Quest 3 Optimisé) -->
-      <!-- ============================================ -->
-      <a-entity id="rig" position="0 0 1.5">
-        <!-- Caméra -->
-        <a-camera 
-          id="camera"
-          position="0 1.6 0"
-          look-controls="pointerLockEnabled: false"
-          wasd-controls="enabled: true"
-        ></a-camera>
+      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
 
-        <!-- Main Gauche -->
-        <a-entity 
-          id="left-hand"
-          oculus-touch-controls="hand: left"
-          vr-hand-controls="hand: left"
-          raycaster="objects: .cable-tip; far: 0.1; showLine: false"
-        >
-          <!-- Collider sphérique pour proximité -->
-          <a-sphere 
-            class="hand-collider"
-            radius="0.03"
-            visible="false"
-            position="0 0 -0.05"
-          ></a-sphere>
-        </a-entity>
-
-        <!-- Main Droite -->
-        <a-entity 
-          id="right-hand"
-          oculus-touch-controls="hand: right"
-          vr-hand-controls="hand: right"
-          raycaster="objects: .cable-tip; far: 0.1; showLine: false"
-        >
-          <!-- Collider sphérique pour proximité -->
-          <a-sphere 
-            class="hand-collider"
-            radius="0.03"
-            visible="false"
-            position="0 0 -0.05"
-          ></a-sphere>
-        </a-entity>
-      </a-entity>
-
+      <a-sky color="#e0e0e0"></a-sky>
     </a-scene>
 
-    <script type="module" src="/src/main.js"></script>
+    <script>
+      document.querySelector("a-scene").addEventListener("loaded", function() {
+        document.querySelectorAll(".ceiling-light-unit").forEach(function(el) {
+          window.SEVERANCE.ceilingLights.push(el.querySelector("a-light"));
+        });
+        document.querySelectorAll("#disco-lights > a-entity").forEach(function(el) {
+          window.SEVERANCE.rgbLights.push(el);
+        });
+        window.SEVERANCE.speakers.push(document.getElementById("speaker-left"));
+        window.SEVERANCE.speakers.push(document.getElementById("speaker-right"));
+        console.log("Scene loaded - refs initialized");
+      });
+    </script>
   </body>
 </html>

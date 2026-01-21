@@ -1248,8 +1248,8 @@
       desktop-grabber>
       
       <a-assets timeout="3000">
-        <a-asset-item id="speaker-model" src="enceinte_deluxe.glb"></a-asset-item>
-        <a-asset-item id="outie-asset" src="outie_world.glb"></a-asset-item>
+        <a-asset-item id="speaker-model" src="assets/enceinte_deluxe.glb"></a-asset-item>
+        <a-asset-item id="outie-asset" src="assets/outie_world.glb"></a-asset-item>
         
         <!-- Audio Stems pour le Data Refinement -->
         <audio id="stem-bass" src="audio/stem-bass.mp3" preload="auto"></audio>
@@ -1408,14 +1408,14 @@
       <!-- ========== OUTIE WORLD (Monde Extérieur - Nuit d'Hiver Mystérieuse) ========== -->
       <a-entity id="outie-world" visible="false" position="0 0 0">
         <!-- Terrain 3D -->
-        <a-entity gltf-model="#outie-asset" scale="4 4 4"></a-entity>
+        <a-entity gltf-model="#outie-asset" scale="3 3 3"></a-entity>
         
         <!-- Sol Verglaçé (effet neige gelée) -->
-        <a-plane position="0 0 0" 
+        <a-plane position="0 -0.5 0" 
                  rotation="-90 0 0" 
                  width="100" 
                  height="100" 
-                 material="color: #e0f0ff; roughness: 0.3; metalness: 0.1; opacity: 0.95; transparent: true"
+                 material="color: #e0f0ff; roughness: 0.3; metalness: 0.1; opacity: 0.80; transparent: true"
                  shadow="receive: true">
         </a-plane>
         

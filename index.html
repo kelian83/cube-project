@@ -55,49 +55,422 @@
         isDiscoMode: false,
         ceilingLights: [],
         rgbLights: [],
-        speakers: []
+        speakers: [],
+        // Système Audio Stems
+        audioStems: {},
+        audioInitialized: false,
+        cableToStem: {
+          0: 'stem-bass',
+          1: 'stem-melody',
+          2: 'stem-perc',
+          3: 'stem-atmos'
+        }
       };
+
+      // Initialisation du système audio synchronisé
+      function initAudioSystem() {
+        if (window.SEVERANCE.audioInitialized) return;
+        
+        const stemIds = ['stem-bass', 'stem-melody', 'stem-perc', 'stem-atmos'];
+        let allLoaded = true;
+        
+        stemIds.forEach(id => {
+          const audio = document.getElementById(id);
+          if (audio) {
+            audio.volume = 0; // Commence muet
+            audio.loop = true;
+            window.SEVERANCE.audioStems[id] = audio;
+          } else {
+            allLoaded = false;
+            console.warn('Audio non trouvé:', id);
+          }
+        });
+        
+        if (allLoaded) {
+          window.SEVERANCE.audioInitialized = true;
+          console.log('✓ Système audio initialisé - Stems prêts');
+        }
+      }
+
+      // Démarrer toutes les pistes synchronisées (volume 0)
+      function startAllStems() {
+        if (!window.SEVERANCE.audioInitialized) {
+          initAudioSystem();
+        }
+        
+        const stems = window.SEVERANCE.audioStems;
+        const startTime = Date.now();
+        
+        Object.values(stems).forEach(audio => {
+          audio.currentTime = 0;
+          audio.play().catch(e => console.warn('Autoplay bloqué:', e));
+        });
+        
+        console.log('♫ Stems démarrés (synchronisés) - Volume: 0');
+      }
+
+      // Activer un stem avec fade in
+      function activateStem(cableId) {
+        const stemId = window.SEVERANCE.cableToStem[cableId];
+        const audio = window.SEVERANCE.audioStems[stemId];
+        
+        if (!audio) {
+          console.warn('Stem non trouvé pour cable:', cableId);
+          return;
+        }
+        
+        // Fade in fluide sur 800ms
+        const fadeDuration = 800;
+        const fadeSteps = 20;
+        const stepTime = fadeDuration / fadeSteps;
+        const volumeStep = 1 / fadeSteps;
+        let currentStep = 0;
+        
+        const fadeInterval = setInterval(() => {
+          currentStep++;
+          audio.volume = Math.min(1, currentStep * volumeStep);
+          
+          if (currentStep >= fadeSteps) {
+            clearInterval(fadeInterval);
+            audio.volume = 1;
+            console.log('♫ Stem activé:', stemId);
+          }
+        }, stepTime);
+      }
+
+      // Mise à jour de l'écran Macintosh
+      function updateMacScreen() {
+        const progress = (window.SEVERANCE.connectedCables / window.SEVERANCE.totalCables) * 100;
+        const macText = document.getElementById('mac-status');
+        
+        if (!macText) return;
+        
+        if (progress < 100) {
+          macText.setAttribute('value', 
+            `DATA CORRUPTION:\n${progress < 50 ? 'CRITICAL' : 'MODERATE'}\n\nREFINEMENT: ${progress}%`);
+        } else {
+          macText.setAttribute('value', 'QUOTA MET.\n\nREWARD\nAVAILABLE.');
+          // Animation clignotante
+          macText.setAttribute('animation', {
+            property: 'material.opacity',
+            from: 1,
+            to: 0.3,
+            dur: 500,
+            dir: 'alternate',
+            loop: true,
+            easing: 'easeInOutSine'
+          });
+        }
+      }
 
       function updateUI() {
         document.getElementById("cable-count").textContent = window.SEVERANCE.connectedCables;
         document.getElementById("progress-fill").style.width = 
           (window.SEVERANCE.connectedCables / window.SEVERANCE.totalCables * 100) + "%";
+        
+        // Mise à jour de l'écran Macintosh
+        updateMacScreen();
       }
 
-      function triggerDiscoMode() {
+      function triggerRewardSequence() {
         if (window.SEVERANCE.isDiscoMode) return;
         window.SEVERANCE.isDiscoMode = true;
-        console.log("SEQUENCE COMPLETE - DISCO MODE");
+        console.log("🏆 QUOTA MET - OVERTIME SEQUENCE INITIATED");
         
         document.getElementById("ui-overlay").style.opacity = "0";
         
+        // Étape 1: Coupure brève du son
+        const stems = window.SEVERANCE.audioStems;
+        Object.values(stems).forEach(audio => {
+          audio.volume = 0;
+        });
+        
+        // Étape 2: Éteindre les lumières du plafond
         window.SEVERANCE.ceilingLights.forEach((light, i) => {
           setTimeout(() => {
             light.setAttribute("animation", {
               property: "light.intensity",
-              to: 0,
-              dur: 1500,
+              to: 0.2,
+              dur: 1200,
               easing: "easeOutQuad"
             });
-          }, i * 150);
+          }, i * 100);
         });
-
+        
+        // Étape 3: Jouer la voix de récompense
         setTimeout(() => {
-          document.querySelector("a-scene").setAttribute("fog", "type: exponential; color: #0a0510; density: 0.04");
-        }, 1000);
+          const voiceReward = document.getElementById('voice-reward');
+          if (voiceReward) {
+            voiceReward.volume = 1;
+            voiceReward.play().catch(e => console.warn('Voice reward:', e));
+            console.log('🎙️ "The Board acknowledges..."');
+          }
+        }, 500);
 
+        // Étape 4: Son hydraulique + Descente de la table
         setTimeout(() => {
-          window.SEVERANCE.rgbLights.forEach(light => {
-            light.setAttribute("visible", "true");
-            if (light.components["rgb-disco"]) light.components["rgb-disco"].start();
-          });
-        }, 2000);
+          console.log('⚙️ Table descending...');
+          
+          // Jouer le son hydraulique
+          const hydraulicSound = document.getElementById('hydraulic-sound');
+          if (hydraulicSound) {
+            hydraulicSound.volume = 0.8;
+            hydraulicSound.play().catch(e => console.warn('Hydraulic sound:', e));
+          }
+          
+          // Animer la descente du bureau
+          const desk = document.getElementById('severance-desk');
+          if (desk) {
+            desk.setAttribute('animation', {
+              property: 'position',
+              to: '0 -2.5 0',
+              dur: 3000,
+              easing: 'easeInOutQuad'
+            });
+          }
+          
+          // Animer les câbles pour qu'ils descendent aussi
+          const cablesGroup = document.getElementById('cables-group');
+          if (cablesGroup) {
+            cablesGroup.setAttribute('animation', {
+              property: 'position',
+              to: '0 -2.5 0',
+              dur: 3000,
+              easing: 'easeInOutQuad'
+            });
+          }
+        }, 1500);
 
+        // Étape 5: Faire monter le bouton OVERTIME
         setTimeout(() => {
-          window.SEVERANCE.speakers.forEach(speaker => {
-            speaker.setAttribute("speaker-vibrate", "active: true; intensity: 0.04");
-          });
+          console.log('🔴 Overtime button rising...');
+          const overtimeGroup = document.getElementById('overtime-button-group');
+          if (overtimeGroup) {
+            overtimeGroup.setAttribute('animation', {
+              property: 'position',
+              to: '0 0 0',
+              dur: 2500,
+              easing: 'easeOutBack'
+            });
+          }
         }, 2500);
+
+        // Étape 6: Ambiance tendue - lumières rouges
+        setTimeout(() => {
+          document.querySelector("a-scene").setAttribute("fog", "type: exponential; color: #1a0505; density: 0.025");
+          
+          // Lumières d'alerte rouges pulsantes
+          window.SEVERANCE.rgbLights.forEach((light, index) => {
+            light.setAttribute("visible", "true");
+            const lightEl = light.querySelector('a-light');
+            if (lightEl) {
+              lightEl.removeAttribute('rgb-disco');
+              lightEl.setAttribute('light', {
+                type: 'spot',
+                color: '#ff0000',
+                intensity: 0.8,
+                angle: 40
+              });
+              lightEl.setAttribute('animation', {
+                property: 'light.intensity',
+                from: 0.3,
+                to: 1.2,
+                dur: 800 + (index * 100),
+                dir: 'alternate',
+                loop: true,
+                easing: 'easeInOutSine'
+              });
+            }
+          });
+        }, 4500);
+
+        // Étape 7: Musique en sourdine - tension
+        setTimeout(() => {
+          const atmos = window.SEVERANCE.audioStems['stem-atmos'];
+          if (atmos) {
+            let vol = 0;
+            const fadeIn = setInterval(() => {
+              vol += 0.02;
+              atmos.volume = Math.min(0.4, vol);
+              if (vol >= 0.4) clearInterval(fadeIn);
+            }, 50);
+          }
+          console.log('🎵 Ambient tension...');
+        }, 5000);
+      }
+
+      // ========== TRANSITION GLITCH VERS OUTIE WORLD ==========
+      function triggerOvertimeTransition() {
+        console.log('⚡ OVERTIME TRANSITION TRIGGERED');
+        
+        // Jouer l'alarme glitch
+        const glitchAlarm = document.getElementById('glitch-alarm');
+        if (glitchAlarm) {
+          glitchAlarm.volume = 1;
+          glitchAlarm.play().catch(e => console.warn('Glitch alarm:', e));
+        }
+        
+        // Couper toute la musique
+        const stems = window.SEVERANCE.audioStems;
+        Object.values(stems).forEach(audio => {
+          audio.volume = 0;
+          audio.pause();
+        });
+        
+        // Récupérer la sphère glitch
+        const glitchSphere = document.getElementById('glitch-sphere');
+        const camera = document.querySelector('[camera]');
+        
+        if (glitchSphere && camera) {
+          // Attacher la sphère à la caméra
+          const camPos = camera.object3D.getWorldPosition(new THREE.Vector3());
+          glitchSphere.setAttribute('position', `${camPos.x} ${camPos.y} ${camPos.z}`);
+          glitchSphere.setAttribute('radius', '3');
+          
+          // Effet strobe noir/blanc
+          let strobeCount = 0;
+          const strobeInterval = setInterval(() => {
+            const opacity = strobeCount % 2 === 0 ? 0.95 : 0;
+            const color = strobeCount % 4 < 2 ? '#000000' : '#ffffff';
+            glitchSphere.setAttribute('material', `shader: flat; opacity: ${opacity}; transparent: true; side: back; color: ${color}`);
+            strobeCount++;
+            
+            if (strobeCount > 15) {
+              clearInterval(strobeInterval);
+              // Noir complet avant la transition
+              glitchSphere.setAttribute('material', 'shader: flat; opacity: 1; transparent: true; side: back; color: #000000');
+              
+              // Effectuer le switch après le blackout
+              setTimeout(() => {
+                performWorldSwitch();
+              }, 500);
+            }
+          }, 80);
+        } else {
+          // Fallback si pas de sphère
+          performWorldSwitch();
+        }
+      }
+
+      function performWorldSwitch() {
+        console.log('🌍 Switching to OUTIE WORLD');
+        
+        const innieWorld = document.getElementById('innie-world');
+        const outieWorld = document.getElementById('outie-world');
+        const overtimeButton = document.getElementById('overtime-button-group');
+        const glitchSphere = document.getElementById('glitch-sphere');
+        
+        // Cacher le monde Innie
+        if (innieWorld) {
+          innieWorld.setAttribute('visible', 'false');
+        }
+        
+        // Cacher le bouton overtime
+        if (overtimeButton) {
+          overtimeButton.setAttribute('visible', 'false');
+        }
+        
+        // Afficher le monde Outie
+        if (outieWorld) {
+          outieWorld.setAttribute('visible', 'true');
+        }
+        
+        // Changer le ciel
+        const sky = document.querySelector('a-sky');
+        if (sky) {
+          sky.setAttribute('color', '#87CEEB'); // Ciel bleu
+        }
+        
+        // Retirer le brouillard oppressant
+        document.querySelector("a-scene").setAttribute("fog", "type: exponential; color: #87CEEB; density: 0.005");
+        
+        // Fade out de la sphère noire
+        if (glitchSphere) {
+          glitchSphere.setAttribute('animation', {
+            property: 'material.opacity',
+            from: 1,
+            to: 0,
+            dur: 2000,
+            easing: 'easeOutQuad'
+          });
+        }
+        
+        console.log('✅ Welcome to the outside world.');
+      }
+
+      // ========== COMPOSANT OVERTIME TRIGGER ==========
+      AFRAME.registerComponent('overtime-trigger', {
+        init: function() {
+          this.el.addEventListener('click', this.onActivate.bind(this));
+          this.el.addEventListener('raycaster-intersected', this.onHover.bind(this));
+          this.el.addEventListener('raycaster-intersected-cleared', this.onHoverEnd.bind(this));
+          
+          // Support pour controllers VR
+          this.el.addEventListener('triggerdown', this.onActivate.bind(this));
+          this.el.addEventListener('gripdown', this.onActivate.bind(this));
+          
+          this.isPressed = false;
+          this.canPress = false;
+          
+          // Le bouton devient actif après que l'animation de montée soit terminée
+          setTimeout(() => {
+            this.canPress = true;
+            console.log('🔴 Overtime button READY');
+          }, 6000); // Après toutes les animations de triggerRewardSequence
+        },
+        onHover: function() {
+          if (!this.canPress || this.isPressed) return;
+          this.el.setAttribute('material', 'emissiveIntensity: 1.5');
+          this.el.setAttribute('animation__pulse', {
+            property: 'scale',
+            from: '1 1 1',
+            to: '1.1 1.1 1.1',
+            dur: 300,
+            dir: 'alternate',
+            loop: true
+          });
+        },
+        onHoverEnd: function() {
+          if (this.isPressed) return;
+          this.el.setAttribute('material', 'emissiveIntensity: 0.5');
+          this.el.removeAttribute('animation__pulse');
+          this.el.setAttribute('scale', '1 1 1');
+        },
+        onActivate: function(evt) {
+          if (!this.canPress || this.isPressed) return;
+          this.isPressed = true;
+          
+          console.log('⚡ OVERTIME BUTTON PRESSED!');
+          
+          // Animation d'enfoncement du bouton
+          this.el.setAttribute('animation__press', {
+            property: 'position',
+            to: '0 0.78 0',
+            dur: 200,
+            easing: 'easeOutQuad'
+          });
+          
+          // Feedback haptique si en VR
+          const hands = [document.getElementById('leftHand'), document.getElementById('rightHand')];
+          hands.forEach(hand => {
+            if (!hand) return;
+            const tc = hand.components["oculus-touch-controls"] || hand.components["tracked-controls"];
+            if (tc && tc.controller && tc.controller.gamepad && tc.controller.gamepad.hapticActuators) {
+              const ha = tc.controller.gamepad.hapticActuators[0];
+              if (ha) ha.pulse(1, 500);
+            }
+          });
+          
+          // Déclencher la transition après un court délai
+          setTimeout(() => {
+            triggerOvertimeTransition();
+          }, 300);
+        }
+      })
+
+      // Alias pour compatibilité
+      function triggerDiscoMode() {
+        triggerRewardSequence();
       }
 
       AFRAME.registerComponent("rgb-disco", {
@@ -125,6 +498,36 @@
           this.el.setAttribute("light", {
             intensity: intensity * 3,
             color: "rgb(" + color[0] + ", " + color[1] + ", " + color[2] + ")"
+          });
+        }
+      });
+
+      // Composant Luxe Pulse - Style Jazz Club
+      AFRAME.registerComponent("luxe-pulse", {
+        schema: {
+          colorIndex: { type: "int", default: 0 },
+          speed: { type: "number", default: 0.4 }
+        },
+        init: function() {
+          this.time = Math.random() * 10;
+          // Palette Jazz Club Luxe: Or, Pourpre Profond, Blanc Chaud
+          this.luxeColors = [
+            { r: 255, g: 215, b: 0 },    // Or (#FFD700)
+            { r: 75, g: 0, b: 130 },      // Pourpre Profond (#4B0082)
+            { r: 255, g: 244, b: 230 }    // Blanc Chaud (#FFF4E6)
+          ];
+        },
+        tick: function(time, delta) {
+          this.time += delta * 0.001 * this.data.speed;
+          
+          var color = this.luxeColors[this.data.colorIndex % this.luxeColors.length];
+          
+          // Pulsation douce et élégante
+          var intensity = 1.2 + Math.sin(this.time * Math.PI) * 0.6;
+          
+          this.el.setAttribute("light", {
+            intensity: intensity,
+            color: "rgb(" + color.r + ", " + color.g + ", " + color.b + ")"
           });
         }
       });
@@ -375,15 +778,19 @@
           this.positions[lastIdx].set(portWorldPos.x, portWorldPos.y + 0.08, portWorldPos.z);
           this.tipEntity.object3D.position.set(portWorldPos.x, portWorldPos.y, portWorldPos.z);
           this.sparksEntity.setAttribute("visible", "false");
+          
+          // Activer le stem audio correspondant
+          activateStem(this.data.cableId);
+          
           window.SEVERANCE.connectedCables++;
           updateUI();
-          console.log("Cable " + (this.data.cableId + 1) + " connected!");
+          console.log("Cable " + (this.data.cableId + 1) + " connected! → Stem activé");
           var leftHand = document.getElementById("leftHand");
           var rightHand = document.getElementById("rightHand");
           this.hapticPulse(leftHand, 1, 200);
           this.hapticPulse(rightHand, 1, 200);
           if (window.SEVERANCE.connectedCables >= window.SEVERANCE.totalCables) {
-            setTimeout(triggerDiscoMode, 500);
+            setTimeout(triggerRewardSequence, 500);
           }
         },
         hapticPulse: function(hand, intensity, duration) {
@@ -762,16 +1169,29 @@
       
       <a-assets timeout="3000">
         <a-asset-item id="speaker-model" src="enceinte_deluxe.glb"></a-asset-item>
+        <a-asset-item id="outie-asset" src="outie_world.glb"></a-asset-item>
+        
+        <!-- Audio Stems pour le Data Refinement -->
+        <audio id="stem-bass" src="audio/stem-bass.mp3" preload="auto" loop></audio>
+        <audio id="stem-melody" src="audio/stem-melody.mp3" preload="auto" loop></audio>
+        <audio id="stem-perc" src="audio/stem-perc.mp3" preload="auto" loop></audio>
+        <audio id="stem-atmos" src="audio/stem-atmos.mp3" preload="auto" loop></audio>
+        <audio id="voice-reward" src="audio/voice-reward.mp3" preload="auto"></audio>
+        <audio id="hydraulic-sound" src="audio/hydraulic.mp3" preload="auto"></audio>
+        <audio id="glitch-alarm" src="audio/glitch-alarm.mp3" preload="auto"></audio>
+        
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
         <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>
         <a-mixin id="dark-metal" material="color: #2a2a2a; roughness: 0.3; metalness: 0.7"></a-mixin>
       </a-assets>
 
-      <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="8" mixin="floor-carpet"></a-plane>
-      <a-plane position="0 3 0" rotation="90 0 0" width="10" height="8" material="color: #e8e8e8; roughness: 0.3"></a-plane>
+      <!-- ========== INNIE WORLD ========== -->
+      <a-entity id="innie-world">
+        <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="8" mixin="floor-carpet"></a-plane>
+        <a-plane position="0 3 0" rotation="90 0 0" width="10" height="8" material="color: #e8e8e8; roughness: 0.3"></a-plane>
 
-      <a-entity id="ceiling-lights">
+        <a-entity id="ceiling-lights">
         <a-entity class="ceiling-light-unit" position="-2.5 2.98 -2">
           <a-box class="ceiling-panel" width="1.5" height="0.02" depth="1.2" material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8"></a-box>
           <a-light type="point" intensity="0.6" distance="4" decay="2" color="#f0f8ff"></a-light>
@@ -815,7 +1235,7 @@
       <a-plane position="-5 1.5 0" rotation="0 90 0" width="8" height="3" mixin="wall-panel"></a-plane>
       <a-plane position="5 1.5 0" rotation="0 -90 0" width="8" height="3" mixin="wall-panel"></a-plane>
 
-      <a-entity id="main-desk" position="0 0 0">
+      <a-entity id="severance-desk" position="0 0 0">
         <a-box position="0 0.75 0" width="2" height="0.05" depth="1" material="color: #e8e8e8; roughness: 0.15; metalness: 0.05"></a-box>
         <a-box position="-0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         <a-box position="0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
@@ -823,10 +1243,22 @@
         <a-box position="0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
       </a-entity>
 
-      <a-entity position="-0.65 0.78 0">
+      <a-entity id="macintosh-terminal" position="-0.65 0.78 0">
         <a-box width="0.25" height="0.28" depth="0.25" material="color: #c9b99a; roughness: 0.7; metalness: 0"></a-box>
-        <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #003300; emissive: #00ff00; emissiveIntensity: 0.3"></a-box>
+        <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #001100; emissive: #001a00; emissiveIntensity: 0.2"></a-box>
         <a-box position="0 -0.08 0.126" width="0.12" height="0.01" depth="0.01" color="#1a1a1a"></a-box>
+        <!-- Écran du terminal Macintosh -->
+        <a-entity id="mac-screen-text" position="0 0.03 0.122">
+          <a-text id="mac-status" 
+                  value="DATA CORRUPTION:\nCRITICAL\n\nREFINEMENT: 0%" 
+                  color="#33ff00" 
+                  width="0.35" 
+                  align="center"
+                  font="monoid"
+                  anchor="center"
+                  baseline="center"
+                  wrap-count="18"></a-text>
+        </a-entity>
       </a-entity>
 
       <a-entity position="0.6 0.78 -0.15">
@@ -846,12 +1278,14 @@
 
       <a-entity id="speaker-right" position="4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
 
-      <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.5"></a-entity>
-      <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.45"></a-entity>
-      <a-entity id="cable-3" hanging-cable="cableId: 2; anchorX: 0.07; anchorZ: 0.15; length: 1.48"></a-entity>
-      <a-entity id="cable-4" hanging-cable="cableId: 3; anchorX: 0.2; anchorZ: 0.1; length: 1.52"></a-entity>
+      <a-entity id="cables-group">
+          <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.5"></a-entity>
+          <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.45"></a-entity>
+          <a-entity id="cable-3" hanging-cable="cableId: 2; anchorX: 0.07; anchorZ: 0.15; length: 1.48"></a-entity>
+          <a-entity id="cable-4" hanging-cable="cableId: 3; anchorX: 0.2; anchorZ: 0.1; length: 1.52"></a-entity>
+        </a-entity>
 
-      <a-entity position="0 2.95 0.12">
+        <a-entity position="0 2.95 0.12">
         <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
       </a-entity>
 
@@ -874,15 +1308,72 @@
       </a-entity>
 
       <a-light type="ambient" color="#d0d0d0" intensity="0.4"></a-light>
+      </a-entity>
+      <!-- ========== FIN INNIE WORLD ========== -->
+
+      <!-- ========== OUTIE WORLD (Monde Extérieur) ========== -->
+      <a-entity id="outie-world" visible="false" position="0 0 0">
+        <a-entity gltf-model="#outie-asset" scale="3 3 3"></a-entity>
+        <a-light type="ambient" color="#ffeedd" intensity="0.6"></a-light>
+        <a-light type="directional" color="#ffffcc" intensity="0.8" position="5 10 5"></a-light>
+      </a-entity>
+      <!-- ========== FIN OUTIE WORLD ========== -->
+
+      <!-- ========== OVERTIME BUTTON (Sous le sol initialement) ========== -->
+      <a-entity id="overtime-button-group" position="0 -1.5 0">
+        <!-- Piédestal -->
+        <a-cylinder id="button-pedestal" 
+                    radius="0.25" 
+                    height="0.8" 
+                    color="#1a1a1a" 
+                    material="roughness: 0.3; metalness: 0.8"
+                    position="0 0.4 0">
+        </a-cylinder>
+        <!-- Bouton rouge interactif -->
+        <a-cylinder id="overtime-button" 
+                    class="clickable" 
+                    radius="0.15" 
+                    height="0.08" 
+                    color="#cc0000" 
+                    material="shader: flat; emissive: #ff0000; emissiveIntensity: 0.5"
+                    position="0 0.85 0"
+                    overtime-trigger>
+          <!-- Anneau lumineux autour du bouton -->
+          <a-torus radius="0.18" 
+                   radius-tubular="0.015" 
+                   color="#ff3333" 
+                   material="shader: flat; emissive: #ff0000; emissiveIntensity: 1"
+                   rotation="90 0 0"
+                   position="0 0 0">
+          </a-torus>
+        </a-cylinder>
+        <!-- Label OVERTIME -->
+        <a-text value="OVERTIME" 
+                color="#ff0000" 
+                align="center" 
+                width="1.5" 
+                position="0 0.95 0.2"
+                rotation="-30 0 0">
+        </a-text>
+      </a-entity>
+      <!-- ========== FIN OVERTIME BUTTON ========== -->
+
+      <!-- ========== GLITCH SPHERE (Pour transition) ========== -->
+      <a-sphere id="glitch-sphere" 
+                radius="0.5" 
+                color="#000000" 
+                material="shader: flat; opacity: 0; transparent: true; side: back"
+                position="0 1.6 2">
+      </a-sphere>
 
       <a-entity id="rig" position="0 0 2">
         <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
-          <a-cursor color="#00ff00" fuse="false" raycaster="objects: .grabbable"></a-cursor>
+          <a-cursor color="#00ff00" fuse="false" raycaster="objects: .grabbable, .clickable"></a-cursor>
         </a-camera>
       </a-entity>
 
-      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .grabbable; lineColor: #00ffff" cable-grabber></a-entity>
-      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .grabbable; lineColor: #ff00ff" cable-grabber></a-entity>
+      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .grabbable, .clickable; lineColor: #00ffff" cable-grabber></a-entity>
+      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .grabbable, .clickable; lineColor: #ff00ff" cable-grabber></a-entity>
 
       <a-sky color="#e0e0e0"></a-sky>
     </a-scene>
@@ -897,8 +1388,25 @@
         });
         window.SEVERANCE.speakers.push(document.getElementById("speaker-left"));
         window.SEVERANCE.speakers.push(document.getElementById("speaker-right"));
+        
+        // Initialiser le système audio
+        initAudioSystem();
+        
         console.log("Scene loaded - refs initialized");
+        console.log("🎵 Audio System Ready - Click to start stems");
       });
+
+      // Démarrer les stems au premier clic (contourne l'autoplay policy)
+      document.addEventListener('click', function initStems() {
+        startAllStems();
+        document.removeEventListener('click', initStems);
+      }, { once: true });
+      
+      // Ou au premier grip VR
+      document.addEventListener('gripdown', function initStemsVR() {
+        startAllStems();
+        document.removeEventListener('gripdown', initStemsVR);
+      }, { once: true });
     </script>
   </body>
 </html>

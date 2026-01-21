@@ -14,15 +14,99 @@ const GameState = {
   cables: {},
   partyMode: false,
   
+  // Système Audio Stems
+  audioStems: {},
+  audioInitialized: false,
+  cableToStem: {
+    1: 'stem-bass',
+    2: 'stem-melody',
+    3: 'stem-perc',
+    4: 'stem-atmos'
+  },
+  
+  initAudio() {
+    if (this.audioInitialized) return;
+    
+    const stemIds = ['stem-bass', 'stem-melody', 'stem-perc', 'stem-atmos'];
+    stemIds.forEach(id => {
+      const audio = document.getElementById(id);
+      if (audio) {
+        audio.volume = 0;
+        audio.loop = true;
+        this.audioStems[id] = audio;
+      }
+    });
+    
+    this.audioInitialized = true;
+    console.log('✓ Système audio initialisé - Stems prêts');
+  },
+  
+  startAllStems() {
+    if (!this.audioInitialized) this.initAudio();
+    
+    Object.values(this.audioStems).forEach(audio => {
+      audio.currentTime = 0;
+      audio.play().catch(e => console.warn('Autoplay bloqué:', e));
+    });
+    
+    console.log('♫ Stems démarrés (synchronisés) - Volume: 0');
+  },
+  
+  activateStem(cableId) {
+    const stemId = this.cableToStem[cableId];
+    const audio = this.audioStems[stemId];
+    
+    if (!audio) return;
+    
+    // Fade in fluide
+    let vol = 0;
+    const fadeIn = setInterval(() => {
+      vol += 0.05;
+      audio.volume = Math.min(1, vol);
+      if (vol >= 1) {
+        clearInterval(fadeIn);
+        console.log('♫ Stem activé:', stemId);
+      }
+    }, 40);
+  },
+  
+  updateMacScreen() {
+    const progress = (this.connectedCables / 4) * 100;
+    const macText = document.getElementById('mac-status');
+    
+    if (!macText) return;
+    
+    if (progress < 100) {
+      const status = progress < 50 ? 'CRITICAL' : 'MODERATE';
+      macText.setAttribute('value', `DATA CORRUPTION:\n${status}\n\nREFINEMENT: ${progress}%`);
+    } else {
+      macText.setAttribute('value', 'QUOTA MET.\n\nREWARD\nAVAILABLE.');
+      macText.setAttribute('animation', {
+        property: 'material.opacity',
+        from: 1,
+        to: 0.3,
+        dur: 500,
+        dir: 'alternate',
+        loop: true
+      });
+    }
+  },
+  
   addConnection(cableId) {
     if (!this.cables[cableId]) {
       this.cables[cableId] = true;
       this.connectedCables++;
       console.log(`Cable ${cableId} connecté. Total: ${this.connectedCables}/4`);
       
+      // Activer le stem correspondant
+      this.activateStem(cableId);
+      
+      // Mettre à jour l'écran Mac
+      this.updateMacScreen();
+      
       if (this.connectedCables === 4 && !this.partyMode) {
         this.partyMode = true;
-        document.querySelector('a-scene').emit('start-disco-mode');
+        document.querySelector('a-scene').emit('start-reward-sequence');
       }
     }
   }
@@ -383,109 +467,179 @@ AFRAME.registerComponent('vr-hand-controls', {
 
 // ============================================
 // COMPONENT: state-manager
-// Gère les transitions d'état (Party Mode)
+// Gère les transitions d'état (Reward Sequence)
 // ============================================
 AFRAME.registerComponent('state-manager', {
   init: function () {
-    this.el.addEventListener('start-disco-mode', this.startDiscoMode.bind(this));
+    this.el.addEventListener('start-reward-sequence', this.triggerRewardSequence.bind(this));
+    // Alias pour compatibilité
+    this.el.addEventListener('start-disco-mode', this.triggerRewardSequence.bind(this));
   },
 
-  startDiscoMode: function () {
-    console.log('🎉 PARTY MODE ACTIVÉ! 🎉');
+  triggerRewardSequence: function () {
+    console.log('🏆 QUOTA MET - REWARD SEQUENCE INITIATED 🏆');
     
     const scene = this.el;
     
-    // Jouer le son de succès
-    const successSound = document.querySelector('#success-sound');
-    if (successSound) {
-      successSound.play().catch(() => {});
-    }
+    // Étape 1: Coupure brève du son (0.5s)
+    Object.values(GameState.audioStems).forEach(audio => {
+      audio.volume = 0;
+    });
     
-    // 1. Éteindre les lumières blanches du plafond (fade out)
+    // Étape 2: Éteindre les lumières du plafond
     const ceilingLights = document.querySelectorAll('.ceiling-light');
     ceilingLights.forEach((light, index) => {
       light.setAttribute('animation', {
         property: 'material.emissiveIntensity',
         to: 0,
-        dur: 2000,
-        delay: index * 100,
+        dur: 1200,
+        delay: index * 80,
         easing: 'easeOutQuad'
       });
       
       light.setAttribute('animation__color', {
         property: 'material.emissive',
         to: '#000000',
-        dur: 2000,
-        delay: index * 100
+        dur: 1200,
+        delay: index * 80
       });
     });
     
-    // 2. Activer les lumières disco après le fade out
+    // Étape 3: Voix de récompense après 0.5s
     setTimeout(() => {
-      const discoLights = document.querySelector('#disco-lights');
-      discoLights.setAttribute('visible', true);
-      
-      // Fade in des lumières disco
-      const lights = discoLights.querySelectorAll('a-light');
-      lights.forEach((light, index) => {
-        light.setAttribute('animation__intensity', {
-          property: 'intensity',
-          from: 0,
-          to: 2,
-          dur: 1000,
-          delay: index * 200,
-          easing: 'easeInQuad'
-        });
-      });
-      
-      // 3. Activer le brouillard
+      const voiceReward = document.getElementById('voice-reward');
+      if (voiceReward) {
+        voiceReward.volume = 1;
+        voiceReward.play().catch(e => console.warn('Voice reward:', e));
+        console.log('🎙️ "The Board acknowledges..."');
+      }
+    }, 500);
+
+    // Étape 4: Ambiance Jazz Club / Luxe
+    setTimeout(() => {
       scene.setAttribute('fog', {
         type: 'exponential',
-        color: '#1a0a2e',
-        density: 0.15
+        color: '#1a0a20',
+        density: 0.035
       });
+    }, 800);
+
+    // Étape 5: Lumières Luxueuses après le fade out
+    setTimeout(() => {
+      const discoLights = document.querySelector('#disco-lights');
+      if (discoLights) {
+        discoLights.setAttribute('visible', true);
+        
+        const lights = discoLights.querySelectorAll('a-light');
+        lights.forEach((light, index) => {
+          // Appliquer le composant luxe-pulse
+          light.removeAttribute('rgb-disco');
+          light.setAttribute('luxe-pulse', {
+            colorIndex: index % 3,
+            speed: 0.3 + (index * 0.08)
+          });
+          
+          light.setAttribute('animation__intensity', {
+            property: 'intensity',
+            from: 0,
+            to: 1.5,
+            dur: 1000,
+            delay: index * 150,
+            easing: 'easeInQuad'
+          });
+        });
+      }
       
-      // 4. Animation des enceintes (simulation basses)
-      this.startSpeakerAnimation();
-      
-      // 5. Changer la couleur ambiante
+      // Lumière ambiante chaude
       const ambientLight = scene.querySelector('a-light[type="ambient"]');
       if (ambientLight) {
         ambientLight.setAttribute('animation', {
           property: 'color',
-          to: '#2a0a4a',
+          to: '#2a1a10',
           dur: 2000
         });
       }
-      
-    }, 2500);
+    }, 1500);
+
+    // Étape 6: Reprise de la musique à plein volume
+    setTimeout(() => {
+      Object.values(GameState.audioStems).forEach(audio => {
+        let vol = 0;
+        const fadeIn = setInterval(() => {
+          vol += 0.05;
+          audio.volume = Math.min(1, vol);
+          if (vol >= 1) clearInterval(fadeIn);
+        }, 50);
+      });
+      console.log('♫ Musique complète - Full volume');
+    }, 2000);
+
+    // Étape 7: Animation douce des enceintes
+    setTimeout(() => {
+      this.startSpeakerAnimation();
+    }, 2200);
   },
 
   startSpeakerAnimation: function () {
     const speakers = document.querySelectorAll('.speaker');
     
     speakers.forEach((speaker, index) => {
-      // Animation de scale pulsante (simulation basses)
+      // Animation de pulsation douce (style luxe)
       speaker.setAttribute('animation__scale', {
         property: 'scale',
         from: '1 1 1',
-        to: '1.05 1.1 1.05',
-        dur: 300,
+        to: '1.02 1.04 1.02',
+        dur: 400,
         dir: 'alternate',
         loop: true,
         easing: 'easeInOutSine'
       });
       
-      // Légère lumière sur les enceintes
+      // Légère lumière dorée sur les enceintes
       speaker.setAttribute('animation__emissive', {
         property: 'material.emissive',
         from: '#000000',
-        to: '#4a0080',
-        dur: 600,
+        to: '#3a2a00',
+        dur: 800,
         dir: 'alternate',
         loop: true,
-        delay: index * 150
+        delay: index * 100
       });
+    });
+  }
+});
+
+// ============================================
+// COMPONENT: luxe-pulse
+// Lumières style Jazz Club / Luxe
+// ============================================
+AFRAME.registerComponent('luxe-pulse', {
+  schema: {
+    colorIndex: { type: 'int', default: 0 },
+    speed: { type: 'number', default: 0.4 }
+  },
+  
+  init: function () {
+    this.time = Math.random() * 10;
+    // Palette Jazz Club Luxe: Or, Pourpre Profond, Blanc Chaud
+    this.luxeColors = [
+      { r: 255, g: 215, b: 0 },    // Or (#FFD700)
+      { r: 75, g: 0, b: 130 },      // Pourpre Profond (#4B0082)
+      { r: 255, g: 244, b: 230 }    // Blanc Chaud (#FFF4E6)
+    ];
+  },
+  
+  tick: function (time, delta) {
+    this.time += delta * 0.001 * this.data.speed;
+    
+    const color = this.luxeColors[this.data.colorIndex % this.luxeColors.length];
+    
+    // Pulsation douce et élégante
+    const intensity = 1.2 + Math.sin(this.time * Math.PI) * 0.6;
+    
+    this.el.setAttribute('light', {
+      intensity: intensity,
+      color: `rgb(${color.r}, ${color.g}, ${color.b})`
     });
   }
 });
@@ -497,5 +651,21 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('Severance x Bang & Olufsen - WebXR Experience');
   console.log('Optimisé pour Meta Quest 3');
   console.log('Utilisez les contrôleurs VR pour saisir les câbles (GRIP)');
+  
+  // Initialiser le système audio
+  GameState.initAudio();
+  console.log('🎵 Audio System Ready - Interaction requise pour démarrer');
 });
+
+// Démarrer les stems au premier clic (contourne l'autoplay policy)
+document.addEventListener('click', function initStems() {
+  GameState.startAllStems();
+  document.removeEventListener('click', initStems);
+}, { once: true });
+
+// Ou au premier grip VR
+document.addEventListener('gripdown', function initStemsVR() {
+  GameState.startAllStems();
+  document.removeEventListener('gripdown', initStemsVR);
+}, { once: true });
 

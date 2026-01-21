@@ -218,21 +218,10 @@
             hydraulicSound.play().catch(e => console.warn('Hydraulic sound:', e));
           }
           
-          // Animer la descente du bureau
+          // Animer la descente du bureau (tous les enfants suivent automatiquement)
           const desk = document.getElementById('severance-desk');
           if (desk) {
             desk.setAttribute('animation', {
-              property: 'position',
-              to: '0 -2.5 0',
-              dur: 3000,
-              easing: 'easeInOutQuad'
-            });
-          }
-          
-          // Animer les câbles pour qu'ils descendent aussi
-          const cablesGroup = document.getElementById('cables-group');
-          if (cablesGroup) {
-            cablesGroup.setAttribute('animation', {
               property: 'position',
               to: '0 -2.5 0',
               dur: 3000,
@@ -317,39 +306,75 @@
           audio.pause();
         });
         
-        // Récupérer la sphère glitch
-        const glitchSphere = document.getElementById('glitch-sphere');
+        // Récupérer le plan glitch (attaché à la caméra)
+        const glitchPlane = document.getElementById('glitch-plane');
         const camera = document.querySelector('[camera]');
         
-        if (glitchSphere && camera) {
-          // Attacher la sphère à la caméra
-          const camPos = camera.object3D.getWorldPosition(new THREE.Vector3());
-          glitchSphere.setAttribute('position', `${camPos.x} ${camPos.y} ${camPos.z}`);
-          glitchSphere.setAttribute('radius', '3');
+        if (glitchPlane) {
+          // Rendre le plan visible
+          glitchPlane.setAttribute('visible', 'true');
           
           // Effet strobe noir/blanc
           let strobeCount = 0;
           const strobeInterval = setInterval(() => {
-            const opacity = strobeCount % 2 === 0 ? 0.95 : 0;
+            const opacity = strobeCount % 2 === 0 ? 1 : 0;
             const color = strobeCount % 4 < 2 ? '#000000' : '#ffffff';
-            glitchSphere.setAttribute('material', `shader: flat; opacity: ${opacity}; transparent: true; side: back; color: ${color}`);
+            glitchPlane.setAttribute('material', `shader: flat; color: ${color}; opacity: ${opacity}; transparent: true; side: double`);
             strobeCount++;
             
             if (strobeCount > 15) {
               clearInterval(strobeInterval);
               // Noir complet avant la transition
-              glitchSphere.setAttribute('material', 'shader: flat; opacity: 1; transparent: true; side: back; color: #000000');
+              glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: 1; transparent: true; side: double');
               
               // Effectuer le switch après le blackout
               setTimeout(() => {
                 performWorldSwitch();
-              }, 500);
+              }, 400);
             }
-          }, 80);
+          }, 70);
+          
+          // Effet Camera Shake
+          if (camera) {
+            cameraShake(camera, 1000);
+          }
         } else {
-          // Fallback si pas de sphère
+          // Fallback si pas de plan
           performWorldSwitch();
         }
+      }
+      
+      // ========== CAMERA SHAKE EFFECT ==========
+      function cameraShake(camera, duration) {
+        const originalPos = camera.getAttribute('position');
+        const startTime = Date.now();
+        const intensity = 0.02;
+        
+        function shake() {
+          const elapsed = Date.now() - startTime;
+          if (elapsed > duration) {
+            // Restaurer la position originale
+            camera.setAttribute('position', originalPos);
+            return;
+          }
+          
+          // Diminuer l'intensité vers la fin
+          const progress = elapsed / duration;
+          const currentIntensity = intensity * (1 - progress);
+          
+          // Position aléatoire
+          const shakeX = (Math.random() - 0.5) * currentIntensity;
+          const shakeY = originalPos.y + (Math.random() - 0.5) * currentIntensity;
+          const shakeZ = (Math.random() - 0.5) * currentIntensity;
+          
+          camera.object3D.position.x = originalPos.x + shakeX;
+          camera.object3D.position.y = shakeY;
+          camera.object3D.position.z = originalPos.z + shakeZ;
+          
+          requestAnimationFrame(shake);
+        }
+        
+        shake();
       }
 
       function performWorldSwitch() {
@@ -358,7 +383,7 @@
         const innieWorld = document.getElementById('innie-world');
         const outieWorld = document.getElementById('outie-world');
         const overtimeButton = document.getElementById('overtime-button-group');
-        const glitchSphere = document.getElementById('glitch-sphere');
+        const glitchPlane = document.getElementById('glitch-plane');
         
         // Cacher le monde Innie
         if (innieWorld) {
@@ -384,87 +409,107 @@
         // Retirer le brouillard oppressant
         document.querySelector("a-scene").setAttribute("fog", "type: exponential; color: #87CEEB; density: 0.005");
         
-        // Fade out de la sphère noire
-        if (glitchSphere) {
-          glitchSphere.setAttribute('animation', {
-            property: 'material.opacity',
-            from: 1,
-            to: 0,
-            dur: 2000,
-            easing: 'easeOutQuad'
-          });
+        // Fade out du plan noir
+        if (glitchPlane) {
+          let opacity = 1;
+          const fadeOut = setInterval(() => {
+            opacity -= 0.05;
+            if (opacity <= 0) {
+              clearInterval(fadeOut);
+              glitchPlane.setAttribute('visible', 'false');
+              glitchPlane.setAttribute('material', 'opacity: 0');
+            } else {
+              glitchPlane.setAttribute('material', `shader: flat; color: #000000; opacity: ${opacity}; transparent: true; side: double`);
+            }
+          }, 50);
         }
         
         console.log('✅ Welcome to the outside world.');
       }
 
-      // ========== COMPOSANT OVERTIME TRIGGER ==========
+      // ========== COMPOSANT OVERTIME TRIGGER (Proximity Check) ==========
       AFRAME.registerComponent('overtime-trigger', {
         init: function() {
-          this.el.addEventListener('click', this.onActivate.bind(this));
-          this.el.addEventListener('raycaster-intersected', this.onHover.bind(this));
-          this.el.addEventListener('raycaster-intersected-cleared', this.onHoverEnd.bind(this));
-          
-          // Support pour controllers VR
-          this.el.addEventListener('triggerdown', this.onActivate.bind(this));
-          this.el.addEventListener('gripdown', this.onActivate.bind(this));
-          
           this.isPressed = false;
           this.canPress = false;
+          this.buttonWorldPos = new THREE.Vector3();
+          this.handPos = new THREE.Vector3();
+          this.originalY = 0.85; // Position Y originale du bouton
+          this.pressedY = 0.78;  // Position Y quand pressé
+          
+          // Récupérer les références des mains
+          this.leftHand = null;
+          this.rightHand = null;
+          
+          var self = this;
+          this.el.sceneEl.addEventListener('loaded', function() {
+            self.leftHand = document.getElementById('leftHand');
+            self.rightHand = document.getElementById('rightHand');
+            console.log('🔴 Overtime button: hands referenced');
+          });
           
           // Le bouton devient actif après que l'animation de montée soit terminée
           setTimeout(() => {
             this.canPress = true;
-            console.log('🔴 Overtime button READY');
-          }, 6000); // Après toutes les animations de triggerRewardSequence
+            console.log('🔴 Overtime button READY for proximity detection');
+          }, 6000);
         },
-        onHover: function() {
+        tick: function() {
           if (!this.canPress || this.isPressed) return;
-          this.el.setAttribute('material', 'emissiveIntensity: 1.5');
-          this.el.setAttribute('animation__pulse', {
-            property: 'scale',
-            from: '1 1 1',
-            to: '1.1 1.1 1.1',
-            dur: 300,
-            dir: 'alternate',
-            loop: true
+          
+          // Récupérer la position mondiale du bouton
+          this.el.object3D.getWorldPosition(this.buttonWorldPos);
+          
+          // Vérifier la proximité avec chaque main
+          var hands = [this.leftHand, this.rightHand];
+          var self = this;
+          
+          hands.forEach(function(hand) {
+            if (!hand || self.isPressed) return;
+            
+            hand.object3D.getWorldPosition(self.handPos);
+            var distance = self.buttonWorldPos.distanceTo(self.handPos);
+            
+            // Si la main est à moins de 8cm du bouton
+            if (distance < 0.08) {
+              self.onPress(hand);
+            }
           });
         },
-        onHoverEnd: function() {
+        onPress: function(hand) {
           if (this.isPressed) return;
-          this.el.setAttribute('material', 'emissiveIntensity: 0.5');
-          this.el.removeAttribute('animation__pulse');
-          this.el.setAttribute('scale', '1 1 1');
-        },
-        onActivate: function(evt) {
-          if (!this.canPress || this.isPressed) return;
           this.isPressed = true;
           
-          console.log('⚡ OVERTIME BUTTON PRESSED!');
+          console.log('⚡ OVERTIME BUTTON PRESSED by proximity!');
           
           // Animation d'enfoncement du bouton
           this.el.setAttribute('animation__press', {
             property: 'position',
-            to: '0 0.78 0',
-            dur: 200,
+            to: '0 ' + this.pressedY + ' 0',
+            dur: 150,
             easing: 'easeOutQuad'
           });
           
-          // Feedback haptique si en VR
-          const hands = [document.getElementById('leftHand'), document.getElementById('rightHand')];
-          hands.forEach(hand => {
-            if (!hand) return;
-            const tc = hand.components["oculus-touch-controls"] || hand.components["tracked-controls"];
-            if (tc && tc.controller && tc.controller.gamepad && tc.controller.gamepad.hapticActuators) {
-              const ha = tc.controller.gamepad.hapticActuators[0];
-              if (ha) ha.pulse(1, 500);
-            }
-          });
+          // Feedback haptique
+          this.hapticFeedback(hand);
           
           // Déclencher la transition après un court délai
-          setTimeout(() => {
+          var self = this;
+          setTimeout(function() {
             triggerOvertimeTransition();
           }, 300);
+        },
+        hapticFeedback: function(hand) {
+          if (!hand) return;
+          var tc = hand.components["oculus-touch-controls"] || hand.components["tracked-controls"];
+          if (tc && tc.controller && tc.controller.gamepad && tc.controller.gamepad.hapticActuators) {
+            var ha = tc.controller.gamepad.hapticActuators[0];
+            if (ha) {
+              try {
+                ha.pulse(1, 500);
+              } catch (e) {}
+            }
+          }
         }
       })
 
@@ -1236,58 +1281,66 @@
       <a-plane position="5 1.5 0" rotation="0 -90 0" width="8" height="3" mixin="wall-panel"></a-plane>
 
       <a-entity id="severance-desk" position="0 0 0">
+        <!-- Structure du bureau -->
         <a-box position="0 0.75 0" width="2" height="0.05" depth="1" material="color: #e8e8e8; roughness: 0.15; metalness: 0.05"></a-box>
         <a-box position="-0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         <a-box position="0.9 0.375 -0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         <a-box position="-0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         <a-box position="0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
-      </a-entity>
-
-      <a-entity id="macintosh-terminal" position="-0.65 0.78 0">
-        <a-box width="0.25" height="0.28" depth="0.25" material="color: #c9b99a; roughness: 0.7; metalness: 0"></a-box>
-        <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #001100; emissive: #001a00; emissiveIntensity: 0.2"></a-box>
-        <a-box position="0 -0.08 0.126" width="0.12" height="0.01" depth="0.01" color="#1a1a1a"></a-box>
-        <!-- Écran du terminal Macintosh -->
-        <a-entity id="mac-screen-text" position="0 0.03 0.122">
-          <a-text id="mac-status" 
-                  value="DATA CORRUPTION:\nCRITICAL\n\nREFINEMENT: 0%" 
-                  color="#33ff00" 
-                  width="0.35" 
-                  align="center"
-                  font="monoid"
-                  anchor="center"
-                  baseline="center"
-                  wrap-count="18"></a-text>
+        
+        <!-- Macintosh Terminal (enfant du bureau) -->
+        <a-entity id="macintosh-terminal" position="-0.65 0.78 0">
+          <a-box width="0.25" height="0.28" depth="0.25" material="color: #c9b99a; roughness: 0.7; metalness: 0"></a-box>
+          <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #001100; emissive: #001a00; emissiveIntensity: 0.2"></a-box>
+          <a-box position="0 -0.08 0.126" width="0.12" height="0.01" depth="0.01" color="#1a1a1a"></a-box>
+          <a-entity id="mac-screen-text" position="0 0.03 0.122">
+            <a-text id="mac-status" 
+                    value="DATA CORRUPTION:\nCRITICAL\n\nREFINEMENT: 0%" 
+                    color="#33ff00" 
+                    width="0.35" 
+                    align="center"
+                    font="monoid"
+                    anchor="center"
+                    baseline="center"
+                    wrap-count="18"></a-text>
+          </a-entity>
         </a-entity>
-      </a-entity>
 
-      <a-entity position="0.6 0.78 -0.15">
-        <a-box position="0 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #6a6a6a; roughness: 0.5"></a-box>
-        <a-box position="0.1 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #5a5a5a; roughness: 0.5"></a-box>
-        <a-box position="0.2 0.12 0" width="0.08" height="0.24" depth="0.22" material="color: #7a7a7a; roughness: 0.5"></a-box>
-      </a-entity>
+        <!-- Classeurs (enfant du bureau) -->
+        <a-entity id="folders" position="0.6 0.78 -0.15">
+          <a-box position="0 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #6a6a6a; roughness: 0.5"></a-box>
+          <a-box position="0.1 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #5a5a5a; roughness: 0.5"></a-box>
+          <a-box position="0.2 0.12 0" width="0.08" height="0.24" depth="0.22" material="color: #7a7a7a; roughness: 0.5"></a-box>
+        </a-entity>
 
-      <a-entity position="0.75 0.78 0.25">
-        <a-box width="0.12" height="0.15" depth="0.02" material="color: #2a2a2a; roughness: 0.3; metalness: 0.5"></a-box>
-        <a-box position="0 0 0.011" width="0.09" height="0.12" depth="0.005" material="color: #d4a574; roughness: 0.9"></a-box>
-      </a-entity>
+        <!-- Cadre photo (enfant du bureau) -->
+        <a-entity id="photo-frame" position="0.75 0.78 0.25">
+          <a-box width="0.12" height="0.15" depth="0.02" material="color: #2a2a2a; roughness: 0.3; metalness: 0.5"></a-box>
+          <a-box position="0 0 0.011" width="0.09" height="0.12" depth="0.005" material="color: #d4a574; roughness: 0.9"></a-box>
+        </a-entity>
 
-      <a-entity id="bo-console" position="0 0.78 0.2" bo-console="ports: 4"></a-entity>
-
-      <a-entity id="speaker-left" position="-4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
-
-      <a-entity id="speaker-right" position="4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
-
-      <a-entity id="cables-group">
+        <!-- Console B&O (enfant du bureau) -->
+        <a-entity id="bo-console" position="0 0.78 0.2" bo-console="ports: 4"></a-entity>
+        
+        <!-- Câbles (enfants du bureau) -->
+        <a-entity id="cables-group">
           <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.5"></a-entity>
           <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.45"></a-entity>
           <a-entity id="cable-3" hanging-cable="cableId: 2; anchorX: 0.07; anchorZ: 0.15; length: 1.48"></a-entity>
           <a-entity id="cable-4" hanging-cable="cableId: 3; anchorX: 0.2; anchorZ: 0.1; length: 1.52"></a-entity>
         </a-entity>
-
+        
+        <!-- Support câbles au plafond (enfant du bureau) -->
         <a-entity position="0 2.95 0.12">
-        <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
+          <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
+        </a-entity>
       </a-entity>
+
+      <a-entity id="speaker-left" position="-4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
+
+      <a-entity id="speaker-right" position="4 0 -3" gltf-model="#speaker-model" speaker-vibrate="active: false"></a-entity>
+
+      
 
       <a-entity id="disco-lights">
         <a-entity id="rgb-1" position="-3 2.5 -2" visible="false">
@@ -1358,22 +1411,23 @@
       </a-entity>
       <!-- ========== FIN OVERTIME BUTTON ========== -->
 
-      <!-- ========== GLITCH SPHERE (Pour transition) ========== -->
-      <a-sphere id="glitch-sphere" 
-                radius="0.5" 
-                color="#000000" 
-                material="shader: flat; opacity: 0; transparent: true; side: back"
-                position="0 1.6 2">
-      </a-sphere>
-
       <a-entity id="rig" position="0 0 2">
         <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
           <a-cursor color="#00ff00" fuse="false" raycaster="objects: .grabbable, .clickable"></a-cursor>
+          <!-- Plan Glitch pour effet de transition (devant les yeux) -->
+          <a-plane id="glitch-plane" 
+                   position="0 0 -0.15" 
+                   width="0.5" 
+                   height="0.3" 
+                   material="shader: flat; color: #000000; opacity: 0; transparent: true; side: double"
+                   visible="false">
+          </a-plane>
         </a-camera>
+        
+        <!-- Mains VR (enfants du rig, position 0 0 0) -->
+        <a-entity id="leftHand" position="0 0 0" laser-controls="hand: left" raycaster="objects: .grabbable, .clickable; lineColor: #00ffff" cable-grabber></a-entity>
+        <a-entity id="rightHand" position="0 0 0" laser-controls="hand: right" raycaster="objects: .grabbable, .clickable; lineColor: #ff00ff" cable-grabber></a-entity>
       </a-entity>
-
-      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .grabbable, .clickable; lineColor: #00ffff" cable-grabber></a-entity>
-      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .grabbable, .clickable; lineColor: #ff00ff" cable-grabber></a-entity>
 
       <a-sky color="#e0e0e0"></a-sky>
     </a-scene>

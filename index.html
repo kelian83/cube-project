@@ -175,7 +175,7 @@
       function triggerRewardSequence() {
         if (window.SEVERANCE.isDiscoMode) return;
         window.SEVERANCE.isDiscoMode = true;
-        console.log("🏆 QUOTA MET - OVERTIME SEQUENCE INITIATED");
+        console.log("🏆 QUOTA MET - SEQUENCE INITIATED");
         
         document.getElementById("ui-overlay").style.opacity = "0";
         
@@ -207,9 +207,9 @@
           }
         }, 500);
 
-        // Étape 4: Son hydraulique + Descente de la table
+        // Étape 4: Son hydraulique + Descente de la table + Montée des câbles
         setTimeout(() => {
-          console.log('⚙️ Table descending...');
+          console.log('⚙️ Table descending & Cables rising...');
           
           // Jouer le son hydraulique
           const hydraulicSound = document.getElementById('hydraulic-sound');
@@ -223,7 +223,18 @@
           if (desk) {
             desk.setAttribute('animation', {
               property: 'position',
-              to: '0 -2.5 0',
+              to: '0 -2.8 0',
+              dur: 3000,
+              easing: 'easeInOutQuad'
+            });
+          }
+          
+          // Animer la montée des câbles vers le plafond
+          const cableSystem = document.getElementById('cable-ceiling-system');
+          if (cableSystem) {
+            cableSystem.setAttribute('animation', {
+              property: 'position',
+              to: '0 3.5 0',
               dur: 3000,
               easing: 'easeInOutQuad'
             });
@@ -291,6 +302,13 @@
       // ========== TRANSITION GLITCH VERS OUTIE WORLD ==========
       function triggerOvertimeTransition() {
         console.log('⚡ OVERTIME TRANSITION TRIGGERED');
+        
+        // Jouer le son d'entrée ascenseur (piano note)
+        const elevatorEntry = document.getElementById('elevator-entry');
+        if (elevatorEntry) {
+          elevatorEntry.volume = 0.8;
+          elevatorEntry.play().catch(e => console.warn('Elevator entry:', e));
+        }
         
         // Jouer l'alarme glitch
         const glitchAlarm = document.getElementById('glitch-alarm');
@@ -400,6 +418,13 @@
           outieWorld.setAttribute('visible', 'true');
         }
         
+        // Jouer le son de sortie ascenseur (piano note)
+        const elevatorExit = document.getElementById('elevator-exit');
+        if (elevatorExit) {
+          elevatorExit.volume = 0.8;
+          elevatorExit.play().catch(e => console.warn('Elevator exit:', e));
+        }
+        
         // Changer le ciel
         const sky = document.querySelector('a-sky');
         if (sky) {
@@ -453,6 +478,16 @@
             this.canPress = true;
             console.log('🔴 Overtime button READY for proximity detection');
           }, 6000);
+          
+          //A SUPPRIMER ENTRE [CODE TEST PC - Click avec souris]
+          // Event listener pour test PC (click avec souris)
+          this.el.addEventListener('click', function() {
+            if (self.canPress && !self.isPressed) {
+              console.log('🖱️ OVERTIME BUTTON clicked (PC test mode)');
+              self.onPress(null);
+            }
+          });
+          //A SUPPRIMER SORTIE
         },
         tick: function() {
           if (!this.canPress || this.isPressed) return;
@@ -1217,13 +1252,15 @@
         <a-asset-item id="outie-asset" src="outie_world.glb"></a-asset-item>
         
         <!-- Audio Stems pour le Data Refinement -->
-        <audio id="stem-bass" src="audio/stem-bass.mp3" preload="auto" loop></audio>
+        <audio id="stem-bass" src="audio/stem-bass.mp3" preload="auto"></audio>
         <audio id="stem-melody" src="audio/stem-melody.mp3" preload="auto" loop></audio>
         <audio id="stem-perc" src="audio/stem-perc.mp3" preload="auto" loop></audio>
         <audio id="stem-atmos" src="audio/stem-atmos.mp3" preload="auto" loop></audio>
         <audio id="voice-reward" src="audio/voice-reward.mp3" preload="auto"></audio>
         <audio id="hydraulic-sound" src="audio/hydraulic.mp3" preload="auto"></audio>
         <audio id="glitch-alarm" src="audio/glitch-alarm.mp3" preload="auto"></audio>
+        <audio id="elevator-entry" src="audio/elevator_entry.mp3" preload="auto"></audio>
+        <audio id="elevator-exit" src="audio/elevator_exit.mp3" preload="auto"></audio>
         
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
@@ -1321,18 +1358,21 @@
 
         <!-- Console B&O (enfant du bureau) -->
         <a-entity id="bo-console" position="0 0.78 0.2" bo-console="ports: 4"></a-entity>
+      </a-entity>
+
+      <!-- ========== SYSTÈME DE CÂBLES AU PLAFOND (séparé du bureau) ========== -->
+      <a-entity id="cable-ceiling-system" position="0 0 0">
+        <!-- Support câbles au plafond -->
+        <a-entity position="0 2.95 0.12">
+          <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
+        </a-entity>
         
-        <!-- Câbles (enfants du bureau) -->
+        <!-- Câbles suspendus -->
         <a-entity id="cables-group">
           <a-entity id="cable-1" hanging-cable="cableId: 0; anchorX: -0.2; anchorZ: 0.1; length: 1.5"></a-entity>
           <a-entity id="cable-2" hanging-cable="cableId: 1; anchorX: -0.07; anchorZ: 0.15; length: 1.45"></a-entity>
           <a-entity id="cable-3" hanging-cable="cableId: 2; anchorX: 0.07; anchorZ: 0.15; length: 1.48"></a-entity>
           <a-entity id="cable-4" hanging-cable="cableId: 3; anchorX: 0.2; anchorZ: 0.1; length: 1.52"></a-entity>
-        </a-entity>
-        
-        <!-- Support câbles au plafond (enfant du bureau) -->
-        <a-entity position="0 2.95 0.12">
-          <a-box width="0.6" height="0.04" depth="0.15" material="color: #2a2a2a; metalness: 0.7"></a-box>
         </a-entity>
       </a-entity>
 
@@ -1400,14 +1440,6 @@
                    position="0 0 0">
           </a-torus>
         </a-cylinder>
-        <!-- Label OVERTIME -->
-        <a-text value="OVERTIME" 
-                color="#ff0000" 
-                align="center" 
-                width="1.5" 
-                position="0 0.95 0.2"
-                rotation="-30 0 0">
-        </a-text>
       </a-entity>
       <!-- ========== FIN OVERTIME BUTTON ========== -->
 
@@ -1425,8 +1457,18 @@
         </a-camera>
         
         <!-- Mains VR (enfants du rig, position 0 0 0) -->
-        <a-entity id="leftHand" position="0 0 0" laser-controls="hand: left" raycaster="objects: .grabbable, .clickable; lineColor: #00ffff" cable-grabber></a-entity>
-        <a-entity id="rightHand" position="0 0 0" laser-controls="hand: right" raycaster="objects: .grabbable, .clickable; lineColor: #ff00ff" cable-grabber></a-entity>
+        <a-entity id="leftHand" 
+                  position="0 0 0" 
+                  hand-controls="hand: left; handModelStyle: lowPoly; color: #ffcccc"
+                  raycaster="objects: .grabbable, .clickable; lineColor: #00ffff; far: 0.8; showLine: false" 
+                  cable-grabber>
+        </a-entity>
+        <a-entity id="rightHand" 
+                  position="0 0 0" 
+                  hand-controls="hand: right; handModelStyle: lowPoly; color: #ffcccc"
+                  raycaster="objects: .grabbable, .clickable; lineColor: #ff00ff; far: 0.8; showLine: false" 
+                  cable-grabber>
+        </a-entity>
       </a-entity>
 
       <a-sky color="#e0e0e0"></a-sky>

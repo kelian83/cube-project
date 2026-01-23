@@ -450,6 +450,9 @@
         }
         
         console.log('✅ Welcome to the outside world.');
+        
+        // DÉCLENCHEUR FIABLE : On prévient le reste du jeu
+        window.dispatchEvent(new CustomEvent('outie_world_start'));
       }
 
       // ========== COMPOSANT OVERTIME TRIGGER (Proximity Check) ==========
@@ -1250,6 +1253,12 @@
       <a-assets timeout="3000">
         <a-asset-item id="speaker-model" src="assets/enceinte_deluxe.glb"></a-asset-item>
         <a-asset-item id="outie-asset" src="assets/outie_world.glb"></a-asset-item>
+        <a-asset-item id="elevator-asset" src="assets/elevator.glb"></a-asset-item>
+        
+        <!-- Sons Ascenseur -->
+        <audio id="rumble-sound" src="audio/hydraulic.mp3" preload="auto"></audio>
+        <audio id="elevator-ding" src="audio/elevator_exit.mp3" preload="auto"></audio>
+        <audio id="door-slam" src="audio/elevator_entry.mp3" preload="auto"></audio>
         
         <!-- Audio Stems pour le Data Refinement -->
         <audio id="stem-bass" src="audio/stem-bass.mp3" preload="auto"></audio>
@@ -1446,6 +1455,69 @@
                  distance="80" 
                  position="40 2 -60">
         </a-light>
+        
+        <!-- ========== GROUPE ASCENSEUR (Enterré initialement) ========== -->
+        <a-entity id="elevator-group" 
+                  position="0 -6 -3"
+                  scale="0.7 0.7 0.7"
+                  rotation="0 90 0"
+                  animation="property: position; to: 0 0.8 -3; dur: 8000; easing: easeInOutQuad; startEvents: startAscent">
+          <!-- Modèle GLB de l'ascenseur -->
+          <a-entity id="elevator-model" 
+                    gltf-model="#elevator-asset" 
+                    scale="1 1 1"
+                    position="0 0 0">
+          </a-entity>
+          
+          <!-- Lumière intérieure verte mystérieuse -->
+          <a-light type="point" 
+                   color="#ccffcc" 
+                   intensity="2" 
+                   distance="5" 
+                   decay="2"
+                   position="0 2 0">
+          </a-light>
+          
+          <!-- Son de rumble pendant la montée -->
+          <a-sound id="elevator-rumble" 
+                   src="#rumble-sound" 
+                   autoplay="false" 
+                   loop="true" 
+                   volume="0.6"
+                   position="0 1 0">
+          </a-sound>
+          
+          <!-- ========== PORTES PRIMITIVES (Le Hack) ========== -->
+          <!-- Porte Gauche (Position ouverte: cachée à gauche) -->
+          <a-box id="door-left"
+                 width="0.6"
+                 height="2.2"
+                 depth="0.05"
+                 position="-0.62 1.1 0.5"
+                 material="color: #1a1a1a; metalness: 0.8; roughness: 0.2">
+          </a-box>
+          
+          <!-- Porte Droite (Position ouverte: cachée à droite) -->
+          <a-box id="door-right"
+                 width="0.6"
+                 height="2.2"
+                 depth="0.05"
+                 position="0.62 1.1 0.5"
+                 material="color: #1a1a1a; metalness: 0.8; roughness: 0.2">
+          </a-box>
+          <!-- ========== FIN PORTES ========== -->
+        </a-entity>
+        <!-- ========== FIN GROUPE ASCENSEUR ========== -->
+        
+        <!-- Overlay Blackout pour fin de séquence -->
+        <a-entity id="blackout-overlay" visible="false">
+          <a-plane position="0 1.6 -0.5" 
+                   width="10" 
+                   height="10" 
+                   material="shader: flat; color: #000000; opacity: 0; transparent: true; side: double">
+          </a-plane>
+        </a-entity>
+        
       </a-entity>
       <!-- ========== FIN OUTIE WORLD ========== -->
 
@@ -1540,6 +1612,214 @@
         startAllStems();
         document.removeEventListener('gripdown', initStemsVR);
       }, { once: true });
+      
+      // ========== SYSTÈME ASCENSEUR - OUTIE WORLD ==========
+      (function() {
+        let elevatorSequenceStarted = false;
+        let elevatorHasRisen = false;
+        let doorsClosing = false;
+        let playerInElevator = false;
+        
+        // Écoute le CustomEvent déclenché par performWorldSwitch
+        window.addEventListener('outie_world_start', function() {
+          console.log('🚀 ÉVÉNEMENT REÇU : Démarrage séquence Outie World');
+          startElevatorSequence();
+        });
+        
+        // ========== PHASE 1: APPARITION DE L'ASCENSEUR ==========
+        function startElevatorSequence() {
+          if (elevatorSequenceStarted) return;
+          elevatorSequenceStarted = true;
+          
+          // Attendre 5 secondes (5s pour tests, remettre 15000 en prod)
+          setTimeout(function() {
+            console.log('⬆️ ASCENSEUR: Montée majestueuse...');
+            
+            const elevatorGroup = document.getElementById('elevator-group');
+            const rumbleSound = document.querySelector('#elevator-rumble');
+            
+            if (!elevatorGroup) {
+              console.error('Elevator group non trouvé!');
+              return;
+            }
+            
+            // Activer le son de rumble
+            if (rumbleSound) {
+              const rumbleAudio = document.getElementById('rumble-sound');
+              if (rumbleAudio) {
+                rumbleAudio.loop = true;
+                rumbleAudio.volume = 0.6;
+                rumbleAudio.play().catch(e => console.warn('Rumble:', e));
+              }
+            }
+            
+            // DÉCLENCHE L'ANIMATION HTML via emit
+            console.log('⬆️ SIGNAL: Lancement animation ascenseur...');
+            elevatorGroup.emit('startAscent');
+            
+            // Force la visibilité au cas où
+            elevatorGroup.setAttribute('visible', 'true');
+            
+            // À la fin de la montée
+            setTimeout(function() {
+              console.log('🔔 ASCENSEUR: Arrivé!');
+              
+              // Couper le rumble
+              const rumbleAudio = document.getElementById('rumble-sound');
+              if (rumbleAudio) {
+                rumbleAudio.pause();
+                rumbleAudio.currentTime = 0;
+              }
+              
+              // Jouer le ding d'arrivée
+              const dingSound = document.getElementById('elevator-ding');
+              if (dingSound) {
+                dingSound.volume = 0.8;
+                dingSound.play().catch(e => console.warn('Ding:', e));
+              }
+              
+              elevatorHasRisen = true;
+              
+              // Démarrer la détection du joueur
+              startPlayerDetection();
+              
+            }, 8000);
+            
+          }, 5000); // 5s pour tests (remettre 15000 en prod)
+        }
+        
+        // ========== PHASE 2: DÉTECTION DU JOUEUR ==========
+        function startPlayerDetection() {
+          console.log('👁️ ASCENSEUR: Détection joueur activée');
+          
+          const elevatorGroup = document.getElementById('elevator-group');
+          const camera = document.querySelector('[camera]');
+          const rig = document.getElementById('rig');
+          
+          if (!elevatorGroup || (!camera && !rig)) {
+            console.error('Éléments de détection non trouvés!');
+            return;
+          }
+          
+          const elevatorPos = new THREE.Vector3();
+          const playerPos = new THREE.Vector3();
+          
+          // Vérification en boucle (60fps)
+          function checkDistance() {
+            if (doorsClosing || playerInElevator) return;
+            
+            // Position de l'ascenseur (centre de l'entrée)
+            elevatorGroup.object3D.getWorldPosition(elevatorPos);
+            elevatorPos.y = 0; // Ignorer la hauteur pour la distance horizontale
+            elevatorPos.z += 0.5; // Ajuster vers l'entrée
+            
+            // Position du joueur
+            if (rig) {
+              rig.object3D.getWorldPosition(playerPos);
+            } else {
+              camera.object3D.getWorldPosition(playerPos);
+            }
+            playerPos.y = 0; // Ignorer la hauteur
+            
+            const distance = elevatorPos.distanceTo(playerPos);
+            
+            // Si le joueur est à moins de 1.5m
+            if (distance < 1.5) {
+              console.log('🚶 JOUEUR DÉTECTÉ dans l\'ascenseur! Distance:', distance.toFixed(2));
+              playerInElevator = true;
+              triggerDoorClose();
+            } else {
+              requestAnimationFrame(checkDistance);
+            }
+          }
+          
+          checkDistance();
+        }
+        
+        // ========== PHASE 3: FERMETURE DES PORTES ==========
+        function triggerDoorClose() {
+          if (doorsClosing) return;
+          doorsClosing = true;
+          
+          console.log('🚪 PORTES: Fermeture brutale!');
+          
+          const doorLeft = document.getElementById('door-left');
+          const doorRight = document.getElementById('door-right');
+          const slamSound = document.getElementById('door-slam');
+          
+          // Jouer le son de fermeture
+          if (slamSound) {
+            slamSound.volume = 1;
+            slamSound.play().catch(e => console.warn('Slam:', e));
+          }
+          
+          // Animation des portes: se rejoignent au centre (x: 0)
+          // Position fermée: les portes se chevauchent légèrement au centre
+          if (doorLeft) {
+            doorLeft.setAttribute('animation__close', {
+              property: 'position',
+              to: '-0.02 1.1 0.5',
+              dur: 500,
+              easing: 'easeInQuad'
+            });
+          }
+          
+          if (doorRight) {
+            doorRight.setAttribute('animation__close', {
+              property: 'position',
+              to: '0.02 1.1 0.5',
+              dur: 500,
+              easing: 'easeInQuad'
+            });
+          }
+          
+          // Après la fermeture: Blackout et fin
+          setTimeout(function() {
+            triggerBlackoutAndEnd();
+          }, 600);
+        }
+        
+        // ========== PHASE 4: BLACKOUT ET FIN ==========
+        function triggerBlackoutAndEnd() {
+          console.log('⬛ BLACKOUT - Fin de l\'expérience');
+          
+          // Récupérer le plan de la caméra pour le blackout
+          const glitchPlane = document.getElementById('glitch-plane');
+          const blackoutOverlay = document.getElementById('blackout-overlay');
+          
+          // Utiliser le glitch plane existant ou le blackout overlay
+          if (glitchPlane) {
+            glitchPlane.setAttribute('visible', 'true');
+            glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: 0; transparent: true; side: double');
+            
+            // Fade to black
+            let opacity = 0;
+            const fadeIn = setInterval(function() {
+              opacity += 0.1;
+              if (opacity >= 1) {
+                opacity = 1;
+                clearInterval(fadeIn);
+              }
+              glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: ' + opacity + '; transparent: true; side: double');
+            }, 50);
+          }
+          
+          // Couper tous les sons
+          const allAudio = document.querySelectorAll('audio');
+          allAudio.forEach(function(audio) {
+            audio.volume = 0;
+            audio.pause();
+          });
+          
+          // Reload après 2 secondes
+          setTimeout(function() {
+            console.log('🔄 RELOAD - Nouvelle session');
+            window.location.reload();
+          }, 2000);
+        }
+        
+      })();
+      // ========== FIN SYSTÈME ASCENSEUR ==========
     </script>
   </body>
 </html>

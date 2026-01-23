@@ -551,6 +551,148 @@
         }
       })
 
+      // ========== COMPOSANT BACKROOM TRIGGER (Bouton Descente Ascenseur) ==========
+      AFRAME.registerComponent('backroom-trigger', {
+        init: function() {
+          this.isActivated = false;
+          this.el.addEventListener('click', this.onActivate.bind(this));
+          
+          // Support VR (proximité)
+          var self = this;
+          this.buttonWorldPos = new THREE.Vector3();
+          this.handPos = new THREE.Vector3();
+          this.leftHand = null;
+          this.rightHand = null;
+          
+          this.el.sceneEl.addEventListener('loaded', function() {
+            self.leftHand = document.getElementById('leftHand');
+            self.rightHand = document.getElementById('rightHand');
+          });
+        },
+        tick: function() {
+          if (this.isActivated) return;
+          
+          this.el.object3D.getWorldPosition(this.buttonWorldPos);
+          var hands = [this.leftHand, this.rightHand];
+          var self = this;
+          
+          hands.forEach(function(hand) {
+            if (!hand || self.isActivated) return;
+            hand.object3D.getWorldPosition(self.handPos);
+            var distance = self.buttonWorldPos.distanceTo(self.handPos);
+            if (distance < 0.15) {
+              self.onActivate();
+            }
+          });
+        },
+        onActivate: function() {
+          if (this.isActivated) return;
+          this.isActivated = true;
+          
+          console.log('👇 BACKROOM TRIGGER: Descente vers les Backrooms...');
+          
+          // Jouer le son glitch
+          var glitchAlarm = document.getElementById('glitch-alarm');
+          if (glitchAlarm) {
+            glitchAlarm.volume = 0.8;
+            glitchAlarm.play().catch(function(e) { console.warn('Glitch:', e); });
+          }
+          
+          // Jouer le son de rumble (descente)
+          var rumbleAudio = document.getElementById('rumble-sound');
+          if (rumbleAudio) {
+            rumbleAudio.loop = true;
+            rumbleAudio.volume = 0.6;
+            rumbleAudio.play().catch(function(e) { console.warn('Rumble:', e); });
+          }
+          
+          // Effet Strobe via glitch-plane
+          var glitchPlane = document.getElementById('glitch-plane');
+          if (glitchPlane) {
+            glitchPlane.setAttribute('visible', 'true');
+            var strobeCount = 0;
+            var strobeInterval = setInterval(function() {
+              var opacity = strobeCount % 2 === 0 ? 1 : 0;
+              var color = strobeCount % 4 < 2 ? '#000000' : '#ffffff';
+              glitchPlane.setAttribute('material', 'shader: flat; color: ' + color + '; opacity: ' + opacity + '; transparent: true; side: double');
+              strobeCount++;
+              
+              if (strobeCount > 12) {
+                clearInterval(strobeInterval);
+                glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: 1; transparent: true; side: double');
+                
+                // Switch des mondes après 500ms
+                setTimeout(function() {
+                  performBackroomSwitch();
+                }, 500);
+              }
+            }, 80);
+          } else {
+            // Fallback sans glitch plane
+            setTimeout(function() {
+              performBackroomSwitch();
+            }, 500);
+          }
+        }
+      });
+      
+      // ========== SWITCH VERS BACKROOMS ==========
+      function performBackroomSwitch() {
+        console.log('🚧 Switching to BACKROOMS');
+        
+        var outieWorld = document.getElementById('outie-world');
+        var backroomsWorld = document.getElementById('backrooms-world');
+        var glitchPlane = document.getElementById('glitch-plane');
+        
+        // Couper le rumble
+        var rumbleAudio = document.getElementById('rumble-sound');
+        if (rumbleAudio) {
+          rumbleAudio.pause();
+          rumbleAudio.currentTime = 0;
+        }
+        
+        // Cacher Outie World
+        if (outieWorld) {
+          outieWorld.setAttribute('visible', 'false');
+        }
+        
+        // Afficher Backrooms
+        if (backroomsWorld) {
+          backroomsWorld.setAttribute('visible', 'true');
+        }
+        
+        // Jouer le ding d'arrivée
+        var dingSound = document.getElementById('elevator-ding');
+        if (dingSound) {
+          dingSound.volume = 0.8;
+          dingSound.play().catch(function(e) { console.warn('Ding:', e); });
+        }
+        
+        // Changer l'ambiance (ciel/fog)
+        var sky = document.querySelector('a-sky');
+        if (sky) {
+          sky.setAttribute('color', '#f0f0f0');
+        }
+        document.querySelector('a-scene').setAttribute('fog', 'type: exponential; color: #f0f0f0; density: 0.01');
+        
+        // Fade out du plan noir
+        if (glitchPlane) {
+          var opacity = 1;
+          var fadeOut = setInterval(function() {
+            opacity -= 0.1;
+            if (opacity <= 0) {
+              clearInterval(fadeOut);
+              glitchPlane.setAttribute('visible', 'false');
+              glitchPlane.setAttribute('material', 'opacity: 0');
+            } else {
+              glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: ' + opacity + '; transparent: true; side: double');
+            }
+          }, 50);
+        }
+        
+        console.log('✅ Bienvenue dans les Backrooms.');
+      }
+
       // Alias pour compatibilité
       function triggerDiscoMode() {
         triggerRewardSequence();
@@ -1459,16 +1601,16 @@
         <!-- ========== GROUPE ASCENSEUR (Enterré initialement) ========== -->
         <a-entity id="elevator-group" 
                   position="0 -6 -3"
-                  scale="0.7 0.7 0.7"
+                  scale="0.5 0.5 0.5"
                   rotation="0 90 0"
-                  animation="property: position; to: 0 0.8 -3; dur: 8000; easing: easeInOutQuad; startEvents: startAscent">
+                  animation="property: position; to: 0 0.5 -3; dur: 8000; easing: easeInOutQuad; startEvents: startAscent">
           <!-- Modèle GLB de l'ascenseur -->
           <a-entity id="elevator-model" 
                     gltf-model="#elevator-asset" 
                     scale="1 1 1"
                     position="0 0 0">
           </a-entity>
-          
+
           <!-- Lumière intérieure verte mystérieuse -->
           <a-light type="point" 
                    color="#ccffcc" 
@@ -1487,25 +1629,24 @@
                    position="0 1 0">
           </a-sound>
           
-          <!-- ========== PORTES PRIMITIVES (Le Hack) ========== -->
-          <!-- Porte Gauche (Position ouverte: cachée à gauche) -->
-          <a-box id="door-left"
-                 width="0.6"
-                 height="2.2"
+          <!-- ========== BOUTON DE DESCENTE (Intérieur cabine) ========== -->
+          <a-box id="elevator-descent-btn"
+                 class="clickable"
+                 width="0.3"
+                 height="0.3"
                  depth="0.05"
-                 position="-0.62 1.1 0.5"
-                 material="color: #1a1a1a; metalness: 0.8; roughness: 0.2">
+                 position="-1.5 2.5 0"
+                 material="color: #cc0000; emissive: #ff0000; emissiveIntensity: 0.3; metalness: 0.5; roughness: 0.3"
+                 backroom-trigger>
+            <!-- Flèche vers le bas -->
+            <a-text value="▼"
+                    color="white"
+                    align="center"
+                    width="4"
+                    position="0 0 0.02">
+            </a-text>
           </a-box>
-          
-          <!-- Porte Droite (Position ouverte: cachée à droite) -->
-          <a-box id="door-right"
-                 width="0.6"
-                 height="2.2"
-                 depth="0.05"
-                 position="0.62 1.1 0.5"
-                 material="color: #1a1a1a; metalness: 0.8; roughness: 0.2">
-          </a-box>
-          <!-- ========== FIN PORTES ========== -->
+          <!-- ========== FIN BOUTON ========== -->
         </a-entity>
         <!-- ========== FIN GROUPE ASCENSEUR ========== -->
         
@@ -1520,6 +1661,47 @@
         
       </a-entity>
       <!-- ========== FIN OUTIE WORLD ========== -->
+
+      <!-- ========== BACKROOMS WORLD (Salle Severance Souterraine) ========== -->
+      <a-entity id="backrooms-world" visible="false" position="0 0 0">
+        
+        <!-- Ascenseur (Copie - Le joueur est toujours dedans après transition) -->
+        <a-entity id="backroom-elevator" 
+                  position="0 0 -3"
+                  scale="0.5 0.5 0.5"
+                  rotation="0 90 0">
+          <a-entity gltf-model="#elevator-asset" scale="1 1 1" position="0 0 0"></a-entity>
+          <a-light type="point" color="#ccffcc" intensity="2" distance="5" decay="2" position="0 2 0"></a-light>
+        </a-entity>
+        
+        <!-- Sol Vert Severance -->
+        <a-plane position="0 0 0" 
+                 rotation="-90 0 0" 
+                 width="8" 
+                 height="8" 
+                 material="color: #5B7C65; roughness: 0.95; metalness: 0">
+        </a-plane>
+        
+        <!-- Plafond Lumineux -->
+        <a-plane position="0 3 0" 
+                 rotation="90 0 0" 
+                 width="8" 
+                 height="8" 
+                 material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8">
+        </a-plane>
+        <a-light type="point" intensity="0.8" distance="6" decay="2" color="#f0f8ff" position="0 2.9 0"></a-light>
+        
+        <!-- Murs Blancs -->
+        <a-plane position="0 1.5 -4" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+        <a-plane position="0 1.5 4" rotation="0 180 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+        <a-plane position="-4 1.5 0" rotation="0 90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+        <a-plane position="4 1.5 0" rotation="0 -90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+        
+        <!-- Lumière ambiante -->
+        <a-light type="ambient" color="#d0d0d0" intensity="0.5"></a-light>
+        
+      </a-entity>
+      <!-- ========== FIN BACKROOMS WORLD ========== -->
 
       <!-- ========== OVERTIME BUTTON (Sous le sol initialement) ========== -->
       <a-entity id="overtime-button-group" position="0 -1.5 0">

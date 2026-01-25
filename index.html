@@ -1396,6 +1396,8 @@
         <a-asset-item id="speaker-model" src="assets/enceinte_deluxe.glb"></a-asset-item>
         <a-asset-item id="outie-asset" src="assets/outie_world.glb"></a-asset-item>
         <a-asset-item id="elevator-asset" src="assets/elevator.glb"></a-asset-item>
+        <a-asset-item id="macintosh_128k" src="assets/macintosh_128k_computer_1984.glb"></a-asset-item>
+        <a-asset-item id="irving_watermelon" src="assets/irving_watermelon_head_severance.glb"></a-asset-item>
         
         <!-- Sons Ascenseur -->
         <audio id="rumble-sound" src="audio/hydraulic.mp3" preload="auto"></audio>
@@ -1477,35 +1479,20 @@
         <a-box position="-0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         <a-box position="0.9 0.375 0.4" width="0.06" height="0.75" depth="0.06" mixin="aluminum"></a-box>
         
-        <!-- Macintosh Terminal (enfant du bureau) -->
-        <a-entity id="macintosh-terminal" position="-0.65 0.78 0">
-          <a-box width="0.25" height="0.28" depth="0.25" material="color: #c9b99a; roughness: 0.7; metalness: 0"></a-box>
-          <a-box position="0 0.03 0.11" width="0.18" height="0.14" depth="0.02" material="color: #001100; emissive: #001a00; emissiveIntensity: 0.2"></a-box>
-          <a-box position="0 -0.08 0.126" width="0.12" height="0.01" depth="0.01" color="#1a1a1a"></a-box>
-          <a-entity id="mac-screen-text" position="0 0.03 0.122">
-            <a-text id="mac-status" 
-                    value="DATA CORRUPTION:\nCRITICAL\n\nREFINEMENT: 0%" 
-                    color="#33ff00" 
-                    width="0.35" 
-                    align="center"
-                    font="monoid"
-                    anchor="center"
-                    baseline="center"
-                    wrap-count="18"></a-text>
-          </a-entity>
+        <!-- macintosh_128k_computer_1984.glb -->
+        <a-entity id="macintosh-terminal" position="-0.55 0.78 0.4" scale="0.01 0.01 0.01">
+          <a-gltf-model src="#macintosh_128k"></a-gltf-model>
         </a-entity>
 
-        <!-- Classeurs (enfant du bureau) -->
-        <a-entity id="folders" position="0.6 0.78 -0.15">
-          <a-box position="0 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #6a6a6a; roughness: 0.5"></a-box>
-          <a-box position="0.1 0.15 0" width="0.08" height="0.3" depth="0.22" material="color: #5a5a5a; roughness: 0.5"></a-box>
-          <a-box position="0.2 0.12 0" width="0.08" height="0.24" depth="0.22" material="color: #7a7a7a; roughness: 0.5"></a-box>
+        <!-- irving_watermelon_head_severance -->
+        <a-entity id="folders" position="0.65 0.9 0" rotation="0 -20 0" scale="0.5 0.5 0.5">
+          <a-gltf-model src="#irving_watermelon"></a-gltf-model>
         </a-entity>
 
         <!-- Cadre photo (enfant du bureau) -->
         <a-entity id="photo-frame" position="0.75 0.78 0.25">
           <a-box width="0.12" height="0.15" depth="0.02" material="color: #2a2a2a; roughness: 0.3; metalness: 0.5"></a-box>
-          <a-box position="0 0 0.011" width="0.09" height="0.12" depth="0.005" material="color: #d4a574; roughness: 0.9"></a-box>
+          <a-box position="0 0 0.011" width="0.09" height="0.12" depth="0.005" material="color: #5a8fc4; roughness: 0.9"></a-box>
         </a-entity>
 
         <!-- Console B&O (enfant du bureau) -->

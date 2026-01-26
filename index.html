@@ -418,6 +418,10 @@
           outieWorld.setAttribute('visible', 'true');
         }
         
+        // Lancer le son du vent
+        const wind = document.getElementById('outie-wind');
+        if (wind) wind.components.sound.playSound();
+        
         // Jouer le son de sortie ascenseur (piano note)
         const elevatorExit = document.getElementById('elevator-exit');
         if (elevatorExit) {
@@ -552,6 +556,83 @@
       })
 
       // ========== COMPOSANT BACKROOM TRIGGER (Bouton Descente Ascenseur) ==========
+      // ========== COMPOSANT SIMPLE-DOOR-OPENER (Bouton Vert Ouverture) ==========
+      AFRAME.registerComponent('simple-door-opener', {
+        init: function() {
+          this.isPressed = false;
+          this.isActive = false; // Le bouton n'est pas actif au départ
+          
+          // Références
+          this.leftHand = document.getElementById('leftHand');
+          this.rightHand = document.getElementById('rightHand');
+          
+          // Debug PC
+          this.el.addEventListener('click', () => this.press(null));
+          
+          // Le bouton commence grisé/désactivé
+          this.el.setAttribute('material', 'color: #333333; emissive: #000000; emissiveIntensity: 0');
+        },
+        
+        activate: function() {
+          // Activer le bouton (appelé par backroom-trigger à l'arrivée)
+          this.isActive = true;
+          this.el.setAttribute('material', 'color: #00cc00; emissive: #00ff00; emissiveIntensity: 0.5');
+          console.log('🟢 BOUTON VERT ACTIVÉ - Prêt à ouvrir la porte');
+        },
+        
+        tick: function() {
+          if (this.isPressed || !this.isActive || !this.leftHand || !this.rightHand) return;
+          
+          let btnPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(btnPos);
+          let leftPos = new THREE.Vector3();
+          this.leftHand.object3D.getWorldPosition(leftPos);
+          let rightPos = new THREE.Vector3();
+          this.rightHand.object3D.getWorldPosition(rightPos);
+          
+          // Distance de déclenchement (8cm)
+          if (btnPos.distanceTo(leftPos) < 0.08) this.press(this.leftHand);
+          else if (btnPos.distanceTo(rightPos) < 0.08) this.press(this.rightHand);
+        },
+        
+        press: function(hand) {
+          if (this.isPressed || !this.isActive) return;
+          this.isPressed = true;
+          console.log('🟢 BOUTON VERT PRESSÉ - Ouverture de la porte');
+          
+          // Feedback haptique
+          if (hand && hand.components['oculus-touch-controls']?.controller?.gamepad?.hapticActuators?.[0]) {
+            hand.components['oculus-touch-controls'].controller.gamepad.hapticActuators[0].pulse(0.5, 150);
+          }
+          
+          // Animation enfoncement
+          const originalPos = this.el.getAttribute('position');
+          this.el.setAttribute('animation__press', {
+            property: 'position',
+            to: `${originalPos.x} ${originalPos.y} ${originalPos.z - 0.02}`,
+            dur: 100, easing: 'easeOutQuad'
+          });
+          
+          // Ouvrir la porte (fade out)
+          const door = document.querySelector('#backrooms-world .elevator-fade-door');
+          if (door) {
+            door.setAttribute('animation__open', {
+              property: 'material.opacity', from: 1, to: 0, dur: 1000, easing: 'linear'
+            });
+            
+            // Cacher complètement après l'animation
+            setTimeout(() => {
+              door.setAttribute('visible', false);
+            }, 1100);
+          }
+          
+          // Son d'ouverture
+          const ding = document.getElementById('elevator-ding');
+          if (ding) { ding.currentTime = 0; ding.play(); }
+        }
+      });
+
+      // ========== COMPOSANT BACKROOM TRIGGER (Bouton Descente Ascenseur) ==========
       AFRAME.registerComponent('backroom-trigger', {
         init: function() {
           this.isPressed = false;
@@ -561,6 +642,7 @@
           this.leftHand = document.getElementById('leftHand');
           this.rightHand = document.getElementById('rightHand');
           this.cameraRig = document.getElementById('rig'); // Pour le tremblement
+          this.rumbleAudio = null; // Référence stockée
 
           // Debug PC
           this.el.addEventListener('click', () => this.press(null));
@@ -596,20 +678,29 @@
             to: `${this.originalBtnPos.x} ${this.originalBtnPos.y} ${this.originalBtnPos.z - 0.03}`,
             dur: 150, easing: 'easeOutQuad'
           });
-          const rumble = document.getElementById('rumble-sound');
-          if (rumble) { rumble.currentTime = 0; rumble.play(); }
+          
+          // Stocker la référence audio dans this
+          this.rumbleAudio = document.getElementById('rumble-sound');
+          if (this.rumbleAudio) { this.rumbleAudio.currentTime = 0; this.rumbleAudio.play(); }
+          
+          // Jouer le son de transition (pendant tout le trajet)
+          const transitionAudio = document.getElementById('transition-sound');
+          if (transitionAudio) { transitionAudio.currentTime = 0; transitionAudio.volume = 1; transitionAudio.play(); }
 
           // 2. Lancer la séquence du trajet
           this.startElevatorRide();
         },
 
         startElevatorRide: function() {
-          // Récupérer les portes fondues (celle de départ et celle d'arrivée)
+          const self = this; // Référence pour les callbacks
+          
+          // Récupérer les portes fondues (celle de départ ET celle d'arrivée)
           const doors = document.querySelectorAll('.elevator-fade-door');
           
           // ÉTAPE A : FERMETURE (Opacité 0 -> 1 en 1s)
           doors.forEach(d => {
               d.setAttribute('visible', true);
+              d.setAttribute('material', { opacity: 0 }); // Reset
               d.setAttribute('animation__close', {
                   property: 'material.opacity', from: 0, to: 1, dur: 1000, easing: 'linear'
               });
@@ -619,41 +710,69 @@
           setTimeout(() => {
               // Début de l'effet "Distorsion/Vitesse" (Tremblement de la caméra)
               let shakeInterval = setInterval(() => {
-                  if (!this.cameraRig) return;
+                  if (!self.cameraRig) return;
                   // Petit mouvement aléatoire rapide sur X et Y
                   let x = (Math.random() - 0.5) * 0.05;
                   let y = (Math.random() - 0.5) * 0.05;
-                  this.cameraRig.setAttribute('position', `${x} ${y} 2`); // Note: Z=2 est ta position de base
+                  self.cameraRig.setAttribute('position', `${x} ${y} 2`); // Note: Z=2 est ta position de base
               }, 50);
 
               // ÉTAPE C : ARRIVÉE & SWITCH (Après 3s de trajet)
               setTimeout(() => {
                   clearInterval(shakeInterval);
                   // Reset position rig
-                  if (this.cameraRig) this.cameraRig.setAttribute('position', '0 0 2');
+                  if (self.cameraRig) self.cameraRig.setAttribute('position', '0 0 2');
                   
                   // SWITCH MONDE
                   document.getElementById('outie-world').setAttribute('visible', false);
                   document.getElementById('backrooms-world').setAttribute('visible', true);
                   
-                  // Son d'arrivée
-                  if (rumble) rumble.pause();
-                  const ding = document.getElementById('elevator-ding');
-                  if (ding) { ding.currentTime = 0; ding.play(); }
-
-                  // ÉTAPE D : OUVERTURE (Opacité 1 -> 0 en 1s)
-                  doors.forEach(d => {
-                      // On force à 1 avant de fade out pour éviter les flashs
-                      d.setAttribute('material', 'opacity', 1);
-                      d.setAttribute('animation__open', {
-                          property: 'material.opacity', from: 1, to: 0, dur: 1000, easing: 'linear'
-                      });
-                  });
+                  // ÉTAPE D : ACTIVER LE BOUTON VERT EN PRIORITÉ (avant arrêt sons)
+                  const greenBtn = document.getElementById('btn-open-door');
+                  if (greenBtn && greenBtn.components['simple-door-opener']) {
+                    greenBtn.components['simple-door-opener'].activate();
+                    console.log('🟢 Bouton vert activé avec succès');
+                  }
                   
-                  // Nettoyage final
-                  setTimeout(() => {
-                      doors.forEach(d => d.setAttribute('visible', false));
-                  }, 1050);
+                  // Arrêter les sons (sécurisé avec try/catch)
+                  try {
+                    // Arrêter le son rumble
+                    if (self.rumbleAudio) {
+                      self.rumbleAudio.pause();
+                      self.rumbleAudio.currentTime = 0;
+                    }
+                  } catch (e) {
+                    console.warn('Erreur arrêt rumble:', e);
+                  }
+                  
+                  try {
+                    // Arrêter le son de transition
+                    const transitionAudio = document.getElementById('transition-sound');
+                    if (transitionAudio) {
+                      transitionAudio.pause();
+                      transitionAudio.currentTime = 0;
+                    }
+                  } catch (e) {
+                    console.warn('Erreur arrêt transition:', e);
+                  }
+                  
+                  try {
+                    // Arrêter le son du vent (Outie World)
+                    const outieWind = document.getElementById('outie-wind');
+                    if (outieWind && outieWind.components.sound) {
+                      outieWind.components.sound.stopSound();
+                    }
+                  } catch (e) {
+                    console.warn('Erreur arrêt vent:', e);
+                  }
+                  
+                  // Son d'arrivée (ding)
+                  const dingSound = document.getElementById('elevator-ding');
+                  if (dingSound) { dingSound.currentTime = 0; dingSound.play(); }
+                  
+                  // La porte Outie peut être cachée (monde invisible de toute façon)
+                  const outieDoor = document.querySelector('#outie-world .elevator-fade-door');
+                  if (outieDoor) outieDoor.setAttribute('visible', false);
 
               }, 3000); // Durée du trajet dans le noir
 
@@ -1440,6 +1559,7 @@
         <audio id="elevator-entry" src="audio/elevator_entry.mp3" preload="auto"></audio>
         <audio id="elevator-exit" src="audio/elevator_exit.mp3" preload="auto"></audio>
         <audio id="wind-sound" src="audio/wind_loop.mp3" preload="auto"></audio>
+        <audio id="transition-sound" src="audio/transition-elevator.mp3" preload="auto"></audio>
         
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
@@ -1583,8 +1703,9 @@
         </a-plane>
         
         <!-- Ambiance Sonore : Vent Froid -->
-        <a-sound src="#wind-sound" 
-                 autoplay="true" 
+        <a-sound id="outie-wind"
+                 src="#wind-sound" 
+                 autoplay="false" 
                  loop="true" 
                  volume="0.8" 
                  position="0 2 0">
@@ -1686,6 +1807,27 @@
                   rotation="0 270 0">
           <a-entity gltf-model="#elevator-asset" scale="1 1 1" position="0 0 0"></a-entity>
           <a-light type="point" color="#ccffcc" intensity="2" distance="5" decay="2" position="0 2 0"></a-light>
+          
+          <!-- ========== PORTE FONDU BACKROOMS (Effet fermeture/ouverture) ========== -->
+          <a-plane class="elevator-fade-door"
+                   width="3" height="5"
+                   position="-1.7 2.5 0"
+                   rotation="0 90 0"
+                   material="shader: flat; color: #000000; opacity: 1; transparent: true; side: double"
+                   visible="true">
+          </a-plane>
+          
+          <!-- ========== BOUTON VERT OUVERTURE PORTE ========== -->
+          <a-box id="btn-open-door"
+                 class="clickable"
+                 width="0.3"
+                 height="0.3"
+                 depth="0.05"
+                 position="-0.95 2 0.93"
+                 material="color: #333333; emissive: #000000; emissiveIntensity: 0"
+                 simple-door-opener>
+          </a-box>
+          <!-- ========== FIN BOUTON VERT ========== -->
         </a-entity>
         
         <!-- ========== CONTENEUR ARCHITECTURE BACKROOM ========== -->

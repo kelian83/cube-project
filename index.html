@@ -554,85 +554,110 @@
       // ========== COMPOSANT BACKROOM TRIGGER (Bouton Descente Ascenseur) ==========
       AFRAME.registerComponent('backroom-trigger', {
         init: function() {
-          this.isActivated = false;
-          this.el.addEventListener('click', this.onActivate.bind(this));
+          this.isPressed = false;
+          // Position originale pour l'animation du bouton
+          this.originalBtnPos = this.el.getAttribute('position').clone();
           
-          // Support VR (proximité)
-          var self = this;
-          this.buttonWorldPos = new THREE.Vector3();
-          this.handPos = new THREE.Vector3();
-          this.leftHand = null;
-          this.rightHand = null;
-          
-          this.el.sceneEl.addEventListener('loaded', function() {
-            self.leftHand = document.getElementById('leftHand');
-            self.rightHand = document.getElementById('rightHand');
-          });
+          this.leftHand = document.getElementById('leftHand');
+          this.rightHand = document.getElementById('rightHand');
+          this.cameraRig = document.getElementById('rig'); // Pour le tremblement
+
+          // Debug PC
+          this.el.addEventListener('click', () => this.press(null));
         },
+
         tick: function() {
-          if (this.isActivated) return;
-          
-          this.el.object3D.getWorldPosition(this.buttonWorldPos);
-          var hands = [this.leftHand, this.rightHand];
-          var self = this;
-          
-          hands.forEach(function(hand) {
-            if (!hand || self.isActivated) return;
-            hand.object3D.getWorldPosition(self.handPos);
-            var distance = self.buttonWorldPos.distanceTo(self.handPos);
-            if (distance < 0.15) {
-              self.onActivate();
-            }
-          });
+          if (this.isPressed || !this.leftHand || !this.rightHand) return;
+
+          let btnPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(btnPos);
+          let leftPos = new THREE.Vector3();
+          this.leftHand.object3D.getWorldPosition(leftPos);
+          let rightPos = new THREE.Vector3();
+          this.rightHand.object3D.getWorldPosition(rightPos);
+
+          // Distance de déclenchement (8cm)
+          if (btnPos.distanceTo(leftPos) < 0.08) this.press(this.leftHand);
+          else if (btnPos.distanceTo(rightPos) < 0.08) this.press(this.rightHand);
         },
-        onActivate: function() {
-          if (this.isActivated) return;
-          this.isActivated = true;
-          
-          console.log('👇 BACKROOM TRIGGER: Descente vers les Backrooms...');
-          
-          // Jouer le son glitch
-          var glitchAlarm = document.getElementById('glitch-alarm');
-          if (glitchAlarm) {
-            glitchAlarm.volume = 0.8;
-            glitchAlarm.play().catch(function(e) { console.warn('Glitch:', e); });
+
+        press: function(hand) {
+          if (this.isPressed) return;
+          this.isPressed = true;
+          console.log("👇 Séquence Ascenseur démarrée");
+
+          // 1. Feedback Physique Immédiat (Haptique + Anim bouton + Son départ)
+          if (hand && hand.components['oculus-touch-controls']?.controller?.gamepad?.hapticActuators?.[0]) {
+            hand.components['oculus-touch-controls'].controller.gamepad.hapticActuators[0].pulse(1.0, 200);
           }
+          // Bouton s'enfonce (Z local -3cm)
+          this.el.setAttribute('animation__press', {
+            property: 'position',
+            to: `${this.originalBtnPos.x} ${this.originalBtnPos.y} ${this.originalBtnPos.z - 0.03}`,
+            dur: 150, easing: 'easeOutQuad'
+          });
+          const rumble = document.getElementById('rumble-sound');
+          if (rumble) { rumble.currentTime = 0; rumble.play(); }
+
+          // 2. Lancer la séquence du trajet
+          this.startElevatorRide();
+        },
+
+        startElevatorRide: function() {
+          // Récupérer les portes fondues (celle de départ et celle d'arrivée)
+          const doors = document.querySelectorAll('.elevator-fade-door');
           
-          // Jouer le son de rumble (descente)
-          var rumbleAudio = document.getElementById('rumble-sound');
-          if (rumbleAudio) {
-            rumbleAudio.loop = true;
-            rumbleAudio.volume = 0.6;
-            rumbleAudio.play().catch(function(e) { console.warn('Rumble:', e); });
-          }
-          
-          // Effet Strobe via glitch-plane
-          var glitchPlane = document.getElementById('glitch-plane');
-          if (glitchPlane) {
-            glitchPlane.setAttribute('visible', 'true');
-            var strobeCount = 0;
-            var strobeInterval = setInterval(function() {
-              var opacity = strobeCount % 2 === 0 ? 1 : 0;
-              var color = strobeCount % 4 < 2 ? '#000000' : '#ffffff';
-              glitchPlane.setAttribute('material', 'shader: flat; color: ' + color + '; opacity: ' + opacity + '; transparent: true; side: double');
-              strobeCount++;
-              
-              if (strobeCount > 12) {
-                clearInterval(strobeInterval);
-                glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: 1; transparent: true; side: double');
-                
-                // Switch des mondes après 500ms
-                setTimeout(function() {
-                  performBackroomSwitch();
-                }, 500);
-              }
-            }, 80);
-          } else {
-            // Fallback sans glitch plane
-            setTimeout(function() {
-              performBackroomSwitch();
-            }, 500);
-          }
+          // ÉTAPE A : FERMETURE (Opacité 0 -> 1 en 1s)
+          doors.forEach(d => {
+              d.setAttribute('visible', true);
+              d.setAttribute('animation__close', {
+                  property: 'material.opacity', from: 0, to: 1, dur: 1000, easing: 'linear'
+              });
+          });
+
+          // ÉTAPE B : LE TRAJET (Pendant le noir)
+          setTimeout(() => {
+              // Début de l'effet "Distorsion/Vitesse" (Tremblement de la caméra)
+              let shakeInterval = setInterval(() => {
+                  if (!this.cameraRig) return;
+                  // Petit mouvement aléatoire rapide sur X et Y
+                  let x = (Math.random() - 0.5) * 0.05;
+                  let y = (Math.random() - 0.5) * 0.05;
+                  this.cameraRig.setAttribute('position', `${x} ${y} 2`); // Note: Z=2 est ta position de base
+              }, 50);
+
+              // ÉTAPE C : ARRIVÉE & SWITCH (Après 3s de trajet)
+              setTimeout(() => {
+                  clearInterval(shakeInterval);
+                  // Reset position rig
+                  if (this.cameraRig) this.cameraRig.setAttribute('position', '0 0 2');
+                  
+                  // SWITCH MONDE
+                  document.getElementById('outie-world').setAttribute('visible', false);
+                  document.getElementById('backrooms-world').setAttribute('visible', true);
+                  
+                  // Son d'arrivée
+                  if (rumble) rumble.pause();
+                  const ding = document.getElementById('elevator-ding');
+                  if (ding) { ding.currentTime = 0; ding.play(); }
+
+                  // ÉTAPE D : OUVERTURE (Opacité 1 -> 0 en 1s)
+                  doors.forEach(d => {
+                      // On force à 1 avant de fade out pour éviter les flashs
+                      d.setAttribute('material', 'opacity', 1);
+                      d.setAttribute('animation__open', {
+                          property: 'material.opacity', from: 1, to: 0, dur: 1000, easing: 'linear'
+                      });
+                  });
+                  
+                  // Nettoyage final
+                  setTimeout(() => {
+                      doors.forEach(d => d.setAttribute('visible', false));
+                  }, 1050);
+
+              }, 3000); // Durée du trajet dans le noir
+
+          }, 1000); // Attente fin fermeture porte
         }
       });
       
@@ -1587,10 +1612,10 @@
         
         <!-- ========== GROUPE ASCENSEUR (Enterré initialement) ========== -->
         <a-entity id="elevator-group" 
-                  position="0 -6 -3"
+                  position="0 -6 1.5"
                   scale="0.5 0.5 0.5"
-                  rotation="0 90 0"
-                  animation="property: position; to: 0 0.5 -3; dur: 8000; easing: easeInOutQuad; startEvents: startAscent">
+                  rotation="0 270 0"
+                  animation="property: position; to: 0 0.3 1.5; dur: 8000; easing: easeInOutQuad; startEvents: startAscent">
           <!-- Modèle GLB de l'ascenseur -->
           <a-entity id="elevator-model" 
                     gltf-model="#elevator-asset" 
@@ -1622,16 +1647,9 @@
                  width="0.3"
                  height="0.3"
                  depth="0.05"
-                 position="0.85 1.3 0"
+                 position="-0.95 2 0.93"
                  material="color: #cc0000; emissive: #ff0000; emissiveIntensity: 0.3; metalness: 0.5; roughness: 0.3"
                  backroom-trigger>
-            <!-- Flèche vers le bas -->
-            <a-text value="▼"
-                    color="white"
-                    align="center"
-                    width="4"
-                    position="0 0 0.02">
-            </a-text>
           </a-box>
           <!-- ========== FIN BOUTON ========== -->
         </a-entity>
@@ -1654,38 +1672,42 @@
         
         <!-- Ascenseur (Copie - Le joueur est toujours dedans après transition) -->
         <a-entity id="backroom-elevator" 
-                  position="0 0 -3"
+                  position="0 0.3 1.5"
                   scale="0.5 0.5 0.5"
-                  rotation="0 90 0">
+                  rotation="0 270 0">
           <a-entity gltf-model="#elevator-asset" scale="1 1 1" position="0 0 0"></a-entity>
           <a-light type="point" color="#ccffcc" intensity="2" distance="5" decay="2" position="0 2 0"></a-light>
         </a-entity>
         
-        <!-- Sol Vert Severance -->
-        <a-plane position="0 0 0" 
-                 rotation="-90 0 0" 
-                 width="8" 
-                 height="8" 
-                 material="color: #5B7C65; roughness: 0.95; metalness: 0">
-        </a-plane>
-        
-        <!-- Plafond Lumineux -->
-        <a-plane position="0 3 0" 
-                 rotation="90 0 0" 
-                 width="8" 
-                 height="8" 
-                 material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8">
-        </a-plane>
-        <a-light type="point" intensity="0.8" distance="6" decay="2" color="#f0f8ff" position="0 2.9 0"></a-light>
-        
-        <!-- Murs Blancs -->
-        <a-plane position="0 1.5 -4" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-        <a-plane position="0 1.5 4" rotation="0 180 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-        <a-plane position="-4 1.5 0" rotation="0 90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-        <a-plane position="4 1.5 0" rotation="0 -90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-        
-        <!-- Lumière ambiante -->
-        <a-light type="ambient" color="#d0d0d0" intensity="0.5"></a-light>
+        <!-- ========== CONTENEUR ARCHITECTURE BACKROOM ========== -->
+        <a-entity id="backroom-architecture" position="0 0.3 1.5" rotation="0 270 0">
+          <!-- Sol Vert Severance -->
+          <a-plane position="0 0 0" 
+                   rotation="-90 0 0" 
+                   width="8" 
+                   height="8" 
+                   material="color: #5B7C65; roughness: 0.95; metalness: 0">
+          </a-plane>
+          
+          <!-- Plafond Lumineux -->
+          <a-plane position="0 3 0" 
+                   rotation="90 0 0" 
+                   width="8" 
+                   height="8" 
+                   material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8">
+          </a-plane>
+          <a-light type="point" intensity="0.8" distance="6" decay="2" color="#f0f8ff" position="0 2.9 0"></a-light>
+          
+          <!-- Murs Blancs -->
+          <a-plane position="0 1.5 -4" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+          <a-plane position="0 1.5 4" rotation="0 180 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+          <a-plane position="-4 1.5 0" rotation="0 90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+          <a-plane position="4 1.5 0" rotation="0 -90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+          
+          <!-- Lumière ambiante -->
+          <a-light type="ambient" color="#d0d0d0" intensity="0.5"></a-light>
+        </a-entity>
+        <!-- ========== FIN CONTENEUR ARCHITECTURE ========== -->
         
       </a-entity>
       <!-- ========== FIN BACKROOMS WORLD ========== -->

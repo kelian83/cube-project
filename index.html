@@ -560,21 +560,19 @@
       AFRAME.registerComponent('simple-door-opener', {
         init: function() {
           this.isPressed = false;
-          this.isActive = false; // Le bouton n'est pas actif au départ
+          this.isActive = false;
           
-          // Références
           this.leftHand = document.getElementById('leftHand');
           this.rightHand = document.getElementById('rightHand');
           
           // Debug PC
           this.el.addEventListener('click', () => this.press(null));
           
-          // Le bouton commence grisé/désactivé
+          // Bouton grisé au départ
           this.el.setAttribute('material', 'color: #333333; emissive: #000000; emissiveIntensity: 0');
         },
         
         activate: function() {
-          // Activer le bouton (appelé par backroom-trigger à l'arrivée)
           this.isActive = true;
           this.el.setAttribute('material', 'color: #00cc00; emissive: #00ff00; emissiveIntensity: 0.5');
           console.log('🟢 BOUTON VERT ACTIVÉ - Prêt à ouvrir la porte');
@@ -590,7 +588,6 @@
           let rightPos = new THREE.Vector3();
           this.rightHand.object3D.getWorldPosition(rightPos);
           
-          // Distance de déclenchement (8cm)
           if (btnPos.distanceTo(leftPos) < 0.08) this.press(this.leftHand);
           else if (btnPos.distanceTo(rightPos) < 0.08) this.press(this.rightHand);
         },
@@ -598,7 +595,7 @@
         press: function(hand) {
           if (this.isPressed || !this.isActive) return;
           this.isPressed = true;
-          console.log('🟢 BOUTON VERT PRESSÉ - Ouverture de la porte');
+          console.log('🟢 BOUTON VERT PRESSÉ - Séquence finale initiée');
           
           // Feedback haptique
           if (hand && hand.components['oculus-touch-controls']?.controller?.gamepad?.hapticActuators?.[0]) {
@@ -613,22 +610,278 @@
             dur: 100, easing: 'easeOutQuad'
           });
           
-          // Ouvrir la porte (fade out)
+          // === PHASE 1: Ouvrir la porte ===
           const door = document.querySelector('#backrooms-world .elevator-fade-door');
           if (door) {
             door.setAttribute('animation__open', {
               property: 'material.opacity', from: 1, to: 0, dur: 1000, easing: 'linear'
             });
-            
-            // Cacher complètement après l'animation
-            setTimeout(() => {
-              door.setAttribute('visible', false);
-            }, 1100);
+            setTimeout(() => { door.setAttribute('visible', false); }, 1100);
           }
           
           // Son d'ouverture
           const ding = document.getElementById('elevator-ding');
           if (ding) { ding.currentTime = 0; ding.play(); }
+          
+          // === PHASE 2: Activer les gouttes après 2 secondes ===
+          console.log('💧 Gouttes dans 2 secondes...');
+          setTimeout(() => {
+            const gooSystem = document.getElementById('goo-system');
+            if (gooSystem && gooSystem.components['goo-spawner']) {
+              gooSystem.components['goo-spawner'].start();
+              console.log('💧 GOO SYSTEM: Gouttes activées');
+            }
+          }, 2000);
+          
+          // === PHASE 3: Inondation après 7 secondes ===
+          console.log('🌊 Inondation dans 7 secondes...');
+          setTimeout(() => {
+            this.startFloodSequence();
+          }, 7000);
+        },
+        
+        // ========== SÉQUENCE D'INONDATION ==========
+        startFloodSequence: function() {
+          console.log('🌊 FLOOD SEQUENCE DÉMARRÉE');
+          
+          const self = this;
+          const gooFlood = document.getElementById('goo-flood');
+          const gooSystem = document.getElementById('goo-system');
+          
+          if (!gooFlood) {
+            console.error('❌ #goo-flood non trouvé!');
+            return;
+          }
+          
+          // Rendre le bloc visible au plafond
+          gooFlood.setAttribute('visible', 'true');
+          gooFlood.setAttribute('position', '0 7 -8');
+          
+          // Animation de descente lente (15 secondes)
+          gooFlood.setAttribute('animation__descend', {
+            property: 'position',
+            to: '0 1.5 -8',
+            dur: 15000,
+            easing: 'easeInQuad'
+          });
+          
+          // === AUDIO OPPRESSANT (Volume progressif) ===
+          const rumble = document.getElementById('hydraulic-sound');
+          if (rumble) {
+            rumble.loop = true;
+            rumble.volume = 0.1;
+            rumble.play().catch(e => console.warn('Rumble:', e));
+            
+            // Volume progressif
+            let vol = 0.1;
+            this.volumeRamp = setInterval(() => {
+              vol = Math.min(vol + 0.02, 0.8);
+              rumble.volume = vol;
+            }, 500);
+          }
+          
+          // Jouer stem-atmos si disponible
+          const atmos = document.getElementById('stem-atmos');
+          if (atmos) {
+            atmos.volume = 0.8;
+            atmos.play().catch(e => console.warn('Atmos:', e));
+          }
+          
+          // Intensifier les gouttes
+          if (gooSystem && gooSystem.components['goo-spawner']) {
+            gooSystem.components['goo-spawner'].data.spawnInterval = 80;
+            gooSystem.components['goo-spawner'].data.maxDrops = 30;
+          }
+          
+          // === TREMBLEMENT SEULEMENT DANS LES 3 DERNIÈRES SECONDES ===
+          setTimeout(() => {
+            console.log('📳 Tremblement final activé');
+            self.startCameraShake();
+          }, 12000); // 15s - 3s = 12s
+          
+          // Déclencher la transition quand le bloc atteint la tête
+          setTimeout(() => {
+            this.triggerFinalTransition();
+          }, 14000);
+        },
+        
+        startCameraShake: function() {
+          const cameraRig = document.getElementById('rig');
+          if (!cameraRig) return;
+          
+          const originalPos = cameraRig.getAttribute('position');
+          let shakeIntensity = 0.02; // Intensité plus forte pour les 3 dernières secondes
+          
+          this.shakeTimer = setInterval(() => {
+            shakeIntensity = Math.min(shakeIntensity + 0.005, 0.06);
+            
+            const offsetX = (Math.random() - 0.5) * shakeIntensity;
+            const offsetZ = (Math.random() - 0.5) * shakeIntensity;
+            
+            cameraRig.setAttribute('position', {
+              x: originalPos.x + offsetX,
+              y: originalPos.y,
+              z: originalPos.z + offsetZ
+            });
+          }, 40);
+        },
+        
+        // ========== TRANSITION FINALE (Strobe Noir/Blanc + Reset) ==========
+        triggerFinalTransition: function() {
+          console.log('⚡ TRANSITION FINALE - Strobe Noir/Blanc');
+          
+          const self = this;
+          
+          // Arrêter le tremblement
+          if (this.shakeTimer) clearInterval(this.shakeTimer);
+          
+          // Arrêter le volume ramp
+          if (this.volumeRamp) clearInterval(this.volumeRamp);
+          
+          // Arrêter les sons
+          const rumble = document.getElementById('hydraulic-sound');
+          if (rumble) { rumble.pause(); rumble.currentTime = 0; }
+          
+          const atmos = document.getElementById('stem-atmos');
+          if (atmos) { atmos.pause(); atmos.currentTime = 0; }
+          
+          // Reset position caméra
+          const cameraRig = document.getElementById('rig');
+          if (cameraRig) cameraRig.setAttribute('position', '0 0 2');
+          
+          // Jouer le son glitch
+          const glitchAlarm = document.getElementById('glitch-alarm');
+          if (glitchAlarm) {
+            glitchAlarm.currentTime = 0;
+            glitchAlarm.volume = 1;
+            glitchAlarm.play().catch(e => console.warn('Glitch:', e));
+          }
+          
+          // Récupérer le glitch plane
+          const glitchPlane = document.getElementById('glitch-plane');
+          
+          if (glitchPlane) {
+            glitchPlane.setAttribute('visible', 'true');
+            
+            // === STROBE NOIR/BLANC UNIQUEMENT ===
+            let flashCount = 0;
+            const maxFlashes = 10;
+            let isWhite = true;
+            
+            const strobeInterval = setInterval(() => {
+              flashCount++;
+              
+              if (flashCount >= maxFlashes) {
+                clearInterval(strobeInterval);
+                // Noir total
+                glitchPlane.setAttribute('material', 'shader: flat; color: #000000; opacity: 1; transparent: true; side: double');
+                
+                // Reset du jeu après noir complet
+                setTimeout(() => {
+                  self.performGameReset();
+                  
+                  // Fade out
+                  setTimeout(() => {
+                    let opacity = 1;
+                    const fadeOut = setInterval(() => {
+                      opacity -= 0.05;
+                      if (opacity <= 0) {
+                        clearInterval(fadeOut);
+                        glitchPlane.setAttribute('visible', 'false');
+                        glitchPlane.setAttribute('material', 'opacity: 0');
+                      } else {
+                        glitchPlane.setAttribute('material', `shader: flat; color: #000000; opacity: ${opacity}; transparent: true; side: double`);
+                      }
+                    }, 35);
+                  }, 400);
+                }, 300);
+              } else {
+                // Alternance Blanc/Noir
+                const color = isWhite ? '#FFFFFF' : '#000000';
+                isWhite = !isWhite;
+                glitchPlane.setAttribute('material', `shader: flat; color: ${color}; opacity: 1; transparent: true; side: double`);
+              }
+            }, 50); // Flash rapide 50ms
+          } else {
+            // Fallback
+            setTimeout(() => self.performGameReset(), 500);
+          }
+        },
+        
+        // ========== RESET COMPLET DU JEU ==========
+        performGameReset: function() {
+          console.log('🔄 RESET: Retour au bureau Lumon');
+          
+          const innieWorld = document.getElementById('innie-world');
+          const outieWorld = document.getElementById('outie-world');
+          const backroomsWorld = document.getElementById('backrooms-world');
+          const overtimeButton = document.getElementById('overtime-button-group');
+          const cablesGroup = document.getElementById('cables-group');
+          const cableCeilingSystem = document.getElementById('cable-ceiling-system');
+          const gooFlood = document.getElementById('goo-flood');
+          const gooSystem = document.getElementById('goo-system');
+          const sky = document.querySelector('a-sky');
+          const scene = document.querySelector('a-scene');
+          const rig = document.getElementById('rig');
+          
+          // Cacher les mondes secondaires
+          if (outieWorld) outieWorld.setAttribute('visible', 'false');
+          if (backroomsWorld) backroomsWorld.setAttribute('visible', 'false');
+          
+          // Afficher Innie World
+          if (innieWorld) innieWorld.setAttribute('visible', 'true');
+          
+          // Cacher le bouton overtime (sous le sol)
+          if (overtimeButton) {
+            overtimeButton.setAttribute('visible', 'true');
+            overtimeButton.setAttribute('position', '0 -1.5 0');
+          }
+          
+          // SUPPRIMER LES CÂBLES
+          if (cablesGroup) {
+            while (cablesGroup.firstChild) {
+              cablesGroup.removeChild(cablesGroup.firstChild);
+            }
+            console.log('🔌 Câbles supprimés');
+          }
+          
+          // Cacher le système de câbles
+          if (cableCeilingSystem) {
+            cableCeilingSystem.setAttribute('visible', 'false');
+          }
+          
+          // Reset goo flood
+          if (gooFlood) {
+            gooFlood.setAttribute('visible', 'false');
+            gooFlood.setAttribute('position', '0 7 -8');
+            gooFlood.removeAttribute('animation__descend');
+          }
+          
+          // Reset goo spawner
+          if (gooSystem && gooSystem.components['goo-spawner']) {
+            const spawner = gooSystem.components['goo-spawner'];
+            spawner.isEnabled = false;
+            spawner.phase2Started = false;
+            for (let i = 0; i < spawner.drops.length; i++) {
+              spawner.el.object3D.remove(spawner.drops[i]);
+            }
+            spawner.drops = [];
+          }
+          
+          // Reset ciel et brouillard
+          if (sky) sky.setAttribute('color', '#e0e0e0');
+          if (scene) scene.setAttribute('fog', 'type: exponential; color: #f0f0f0; density: 0.008');
+          
+          // Téléporter le joueur
+          if (rig) rig.setAttribute('position', '0 0 2');
+          
+          // Arrêter les sons
+          const wind = document.getElementById('outie-wind');
+          if (wind && wind.components && wind.components.sound) {
+            wind.components.sound.stopSound();
+          }
+          
+          console.log('✅ JEU RÉINITIALISÉ - Bienvenue chez Lumon Industries!');
         }
       });
 
@@ -719,8 +972,11 @@
 
               // ÉTAPE C : ARRIVÉE & SWITCH (Après 3s de trajet)
               setTimeout(() => {
+                  // SÉCURITÉ: Arrêt du tremblement
                   clearInterval(shakeInterval);
-                  // Reset position rig
+                  shakeInterval = null;
+                  
+                  // Reset position rig (OBLIGATOIRE)
                   if (self.cameraRig) self.cameraRig.setAttribute('position', '0 0 2');
                   
                   // SWITCH MONDE
@@ -1526,6 +1782,137 @@
           }
         }
       });
+
+      // ✅ Système de Goo (liquide noir visqueux) - Optimisé Quest
+      AFRAME.registerComponent("goo-spawner", {
+        schema: {
+          areaSize: { type: "vec2", default: { x: 3, y: 3 } },
+          spawnInterval: { type: "number", default: 200 },
+          fallSpeed: { type: "number", default: 2.5 },
+          maxDrops: { type: "number", default: 20 },
+          spawnHeight: { type: "number", default: 0 },
+          floorY: { type: "number", default: -2.9 }
+        },
+        
+        init: function() {
+          this.drops = [];
+          this.lastSpawn = 0;
+          this.isEnabled = false;
+          
+          // Shared Material (une seule instance pour toutes les gouttes)
+          this.sharedMaterial = new THREE.MeshStandardMaterial({
+            color: 0x050505,
+            roughness: 0.1,
+            metalness: 0.7
+          });
+          
+          // Shared Geometry (réutilisée)
+          this.sharedGeometry = new THREE.SphereGeometry(0.5, 8, 6);
+          
+          console.log("💧 Goo Spawner initialisé");
+        },
+        
+        start: function() {
+          this.isEnabled = true;
+          console.log("💧 GOO SYSTEM ACTIVÉ - Gouttes actives");
+        },
+        
+        tick: function(time, delta) {
+          if (!this.isEnabled) return;
+          var data = this.data;
+          
+          // Spawn nouvelles gouttes
+          if (time - this.lastSpawn > data.spawnInterval && this.drops.length < data.maxDrops) {
+            this.spawnDrop();
+            this.lastSpawn = time;
+          }
+          
+          // Update chute des gouttes
+          var deltaSeconds = delta / 1000;
+          var self = this;
+          
+          for (var i = this.drops.length - 1; i >= 0; i--) {
+            var drop = this.drops[i];
+            drop.position.y -= data.fallSpeed * deltaSeconds;
+            
+            // Impact au sol
+            if (drop.position.y <= data.floorY) {
+              self.createSplash(drop.position.x, drop.position.z);
+              self.el.object3D.remove(drop);
+              self.drops.splice(i, 1);
+            }
+          }
+        },
+        
+        spawnDrop: function() {
+          var data = this.data;
+          
+          // Position aléatoire dans la zone
+          var x = (Math.random() - 0.5) * data.areaSize.x;
+          var z = (Math.random() - 0.5) * data.areaSize.y;
+          
+          // Créer le mesh avec material partagé
+          var dropMesh = new THREE.Mesh(this.sharedGeometry, this.sharedMaterial);
+          dropMesh.position.set(x, data.spawnHeight, z);
+          dropMesh.scale.set(0.06, 0.4, 0.06);
+          
+          this.el.object3D.add(dropMesh);
+          this.drops.push(dropMesh);
+        },
+        
+        createSplash: function(x, z) {
+          var scene = this.el.sceneEl;
+          
+          // Convertir en coordonnées monde
+          var worldPos = new THREE.Vector3(x, this.data.floorY, z);
+          this.el.object3D.localToWorld(worldPos);
+          
+          // Créer la flaque (a-circle)
+          var splash = document.createElement("a-circle");
+          splash.setAttribute("radius", "0.15");
+          splash.setAttribute("position", worldPos.x + " " + worldPos.y + " " + worldPos.z);
+          splash.setAttribute("rotation", "-90 0 0");
+          splash.setAttribute("material", "shader: flat; color: #050505; opacity: 0.8; transparent: true; side: double");
+          splash.setAttribute("scale", "0 0 0");
+          
+          // Animation d'étalement
+          splash.setAttribute("animation__grow", {
+            property: "scale",
+            from: "0 0 0",
+            to: "1 1 1",
+            dur: 120,
+            easing: "easeOutQuad"
+          });
+          
+          // Animation de disparition
+          splash.setAttribute("animation__fade", {
+            property: "material.opacity",
+            from: 0.8,
+            to: 0,
+            dur: 600,
+            delay: 150,
+            easing: "easeInQuad"
+          });
+          
+          scene.appendChild(splash);
+          
+          // Supprimer du DOM après animations
+          setTimeout(function() {
+            if (splash.parentNode) {
+              splash.parentNode.removeChild(splash);
+            }
+          }, 900);
+        },
+        
+        remove: function() {
+          for (var i = 0; i < this.drops.length; i++) {
+            this.el.object3D.remove(this.drops[i]);
+          }
+          this.drops = [];
+          this.sharedGeometry.dispose();
+          this.sharedMaterial.dispose();
+        }
+      });
     </script>
 
     <a-scene 
@@ -1797,10 +2184,10 @@
       </a-entity>
       <!-- ========== FIN OUTIE WORLD ========== -->
 
-      <!-- ========== BACKROOMS WORLD (Salle Severance Souterraine) ========== -->
+      <!-- ========== BACKROOMS WORLD (Couloir Sombre Oppressant) ========== -->
       <a-entity id="backrooms-world" visible="false" position="0 0 2">
         
-        <!-- Ascenseur (Copie - Le joueur est toujours dedans après transition) -->
+        <!-- ========== ASCENSEUR (Position critique identique à Outie) ========== -->
         <a-entity id="backroom-elevator" 
                   position="0 0.3 1.5"
                   scale="0.5 0.5 0.5"
@@ -1808,7 +2195,7 @@
           <a-entity gltf-model="#elevator-asset" scale="1 1 1" position="0 0 0"></a-entity>
           <a-light type="point" color="#ccffcc" intensity="2" distance="5" decay="2" position="0 2 0"></a-light>
           
-          <!-- ========== PORTE FONDU BACKROOMS (Effet fermeture/ouverture) ========== -->
+          <!-- Porte opaque noire au début -->
           <a-plane class="elevator-fade-door"
                    width="3" height="5"
                    position="-1.7 2.5 0"
@@ -1817,7 +2204,7 @@
                    visible="true">
           </a-plane>
           
-          <!-- ========== BOUTON VERT OUVERTURE PORTE ========== -->
+          <!-- Bouton Vert -->
           <a-box id="btn-open-door"
                  class="clickable"
                  width="0.3"
@@ -1827,38 +2214,91 @@
                  material="color: #333333; emissive: #000000; emissiveIntensity: 0"
                  simple-door-opener>
           </a-box>
-          <!-- ========== FIN BOUTON VERT ========== -->
         </a-entity>
+        <!-- ========== FIN ASCENSEUR ========== -->
         
-        <!-- ========== CONTENEUR ARCHITECTURE BACKROOM ========== -->
-        <a-entity id="backroom-architecture" position="0 0.3 -1.9" rotation="0 270 0">
-          <!-- Sol Vert Severance -->
-          <a-plane position="0 0 0" 
+        <!-- ========== COULOIR SOMBRE (Aligné devant la porte) ========== -->
+        <a-entity id="dark-corridor" position="0 0 -8">
+          
+          <!-- Sol gris foncé -->
+          <a-plane position="0 0.01 0" 
                    rotation="-90 0 0" 
-                   width="8" 
-                   height="8" 
-                   material="color: #5B7C65; roughness: 0.95; metalness: 0">
+                   width="2" 
+                   height="20" 
+                   material="color: #1a1a1a; roughness: 0.85; metalness: 0.1">
           </a-plane>
           
-          <!-- Plafond Lumineux -->
+          <!-- Plafond gris foncé -->
           <a-plane position="0 3 0" 
                    rotation="90 0 0" 
-                   width="8" 
-                   height="8" 
-                   material="color: #f0f8ff; emissive: #f0f8ff; emissiveIntensity: 0.8">
+                   width="2" 
+                   height="20" 
+                   material="color: #151515; roughness: 0.9; metalness: 0">
           </a-plane>
-          <a-light type="point" intensity="0.8" distance="6" decay="2" color="#f0f8ff" position="0 2.9 0"></a-light>
           
-          <!-- Murs Blancs -->
-          <a-plane position="0 1.5 -4" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-          <a-plane position="0 1.5 4" rotation="0 180 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-          <a-plane position="-4 1.5 0" rotation="0 90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
-          <a-plane position="4 1.5 0" rotation="0 -90 0" width="8" height="3" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-plane>
+          <!-- Mur gauche -->
+          <a-plane position="-1 1.5 0" 
+                   rotation="0 90 0" 
+                   width="20" 
+                   height="3" 
+                   material="color: #1a1a1a; roughness: 0.8; metalness: 0.1">
+          </a-plane>
           
-          <!-- Lumière ambiante -->
-          <a-light type="ambient" color="#d0d0d0" intensity="0.5"></a-light>
+          <!-- Mur droit -->
+          <a-plane position="1 1.5 0" 
+                   rotation="0 -90 0" 
+                   width="20" 
+                   height="3" 
+                   material="color: #1a1a1a; roughness: 0.8; metalness: 0.1">
+          </a-plane>
+          
+          <!-- Mur du fond (silhouette) -->
+          <a-plane position="0 1.5 -10" 
+                   width="2" 
+                   height="3" 
+                   material="color: #000000; roughness: 1; metalness: 0">
+          </a-plane>
+          
+          <!-- ===== LUMIÈRES ===== -->
+          <!-- Lumière forte au fond (silhouette mystérieuse) -->
+          <a-light type="point" 
+                   color="#ffffff" 
+                   intensity="5" 
+                   distance="20" 
+                   decay="1"
+                   position="0 1.5 -12">
+          </a-light>
+          
+          <!-- Lumière ambiante plus visible -->
+          <a-light type="ambient" color="#444444" intensity="0.7"></a-light>
+          
+          <!-- Lumière près de l'ascenseur -->
+          <a-light type="point" 
+                   color="#aaaaaa" 
+                   intensity="0.8" 
+                   distance="8" 
+                   decay="2"
+                   position="0 2.5 8">
+          </a-light>
+          
         </a-entity>
-        <!-- ========== FIN CONTENEUR ARCHITECTURE ========== -->
+        <!-- ========== FIN COULOIR ========== -->
+        
+        <!-- ========== GOO SYSTEM (Zone couloir) ========== -->
+        <a-entity id="goo-system" 
+                  position="0 2.9 -8" 
+                  goo-spawner="areaSize: 1.5 18; spawnInterval: 200; fallSpeed: 2; maxDrops: 20; spawnHeight: 0; floorY: -2.9">
+        </a-entity>
+        
+        <!-- ========== GOO FLOOD (Bloc d'inondation) ========== -->
+        <a-box id="goo-flood"
+               visible="false"
+               width="2.5"
+               height="4"
+               depth="22"
+               position="0 7 -8"
+               material="color: #030303; roughness: 0.05; metalness: 0.8; opacity: 0.95; transparent: true; side: double">
+        </a-box>
         
       </a-entity>
       <!-- ========== FIN BACKROOMS WORLD ========== -->

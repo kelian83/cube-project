@@ -881,6 +881,14 @@
             wind.components.sound.stopSound();
           }
           
+          // Lancer la musique d'ambiance jazz au retour dans le bureau
+          const jazzEnding = document.getElementById('jazz-ending');
+          if (jazzEnding) {
+            jazzEnding.volume = 0.5;
+            jazzEnding.play().catch(e => console.warn('Jazz ending:', e));
+            console.log('🎵 Musique d\'ambiance jazz activée');
+          }
+          
           console.log('✅ JEU RÉINITIALISÉ - Bienvenue chez Lumon Industries!');
         }
       });
@@ -1950,6 +1958,7 @@
         <audio id="elevator-exit" src="audio/elevator_exit.mp3" preload="auto"></audio>
         <audio id="wind-sound" src="audio/wind_loop.mp3" preload="auto"></audio>
         <audio id="transition-sound" src="audio/transition-elevator.mp3" preload="auto"></audio>
+        <audio id="jazz-ending" src="audio/lumon_jazz_ending.mp3" preload="auto" loop="true"></audio>
         
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
@@ -2697,10 +2706,10 @@
             audio.pause();
           });
           
-          // Reload après 2 secondes
+          // Reload supprimé pour permettre la téléportation
           setTimeout(function() {
-            console.log('🔄 RELOAD - Nouvelle session');
-            window.location.reload();
+            console.log('🔄 Transition terminée - Le jeu continue');
+            // window.location.reload(); // Supprimé pour permettre la boucle de jeu
           }, 2000);
         }
         

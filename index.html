@@ -990,7 +990,7 @@
             
             // === STROBE NOIR/BLANC RALENTI (Plus dramatique) ===
             let flashCount = 0;
-            const maxFlashes = 25; // Plus de flashs pour ~3 secondes
+            const maxFlashes = 15; // Plus de flashs pour ~3 secondes
             let isWhite = true;
             
             const strobeInterval = setInterval(() => {
@@ -1026,7 +1026,7 @@
                 isWhite = !isWhite;
                 glitchPlane.setAttribute('material', `shader: flat; color: ${color}; opacity: 1; transparent: true; side: double`);
               }
-            }, 70); // Flash ralenti 70ms (au lieu de 50ms)
+            }, 120); // Flash ralenti 120ms (au lieu de 50ms)
           } else {
             // Fallback
             setTimeout(() => self.performGameReset(), 500);

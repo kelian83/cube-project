@@ -106,6 +106,13 @@
           audio.play().catch(e => console.warn('Autoplay bloqué:', e));
         });
         
+        // Démarrer stem-melody avec volume ambiant immédiatement
+        const melody = stems['stem-melody'];
+        if (melody) {
+          melody.volume = 0.35;
+          console.log('♫ Stem-melody démarré (volume: 0.35)');
+        }
+        
         console.log('♫ Stems démarrés (synchronisés) - Volume: 0');
       }
 
@@ -179,10 +186,28 @@
         
         document.getElementById("ui-overlay").style.opacity = "0";
         
-        // Étape 1: Coupure brève du son
+        // Étape 1: Fade out de stem-melody (800ms)
+        const melody = window.SEVERANCE.audioStems['stem-melody'];
+        if (melody && melody.volume > 0) {
+          let melodyVol = melody.volume;
+          const melodyFadeOut = setInterval(() => {
+            melodyVol -= 0.05;
+            if (melodyVol <= 0) {
+              clearInterval(melodyFadeOut);
+              melody.volume = 0;
+              console.log('♫ Stem-melody fade out complet');
+            } else {
+              melody.volume = melodyVol;
+            }
+          }, 40);
+        }
+        
+        // Étape 2: Coupure brève des autres stems
         const stems = window.SEVERANCE.audioStems;
-        Object.values(stems).forEach(audio => {
-          audio.volume = 0;
+        Object.entries(stems).forEach(([id, audio]) => {
+          if (id !== 'stem-melody') {
+            audio.volume = 0;
+          }
         });
         
         // Étape 2: Éteindre les lumières du plafond
@@ -543,6 +568,110 @@
         }
       });
 
+      // ========== COMPOSANT SIMPLE-SNOW (Particules légères optimisées) ==========
+      AFRAME.registerComponent('simple-snow', {
+        schema: {
+          count: { type: 'int', default: 45 },
+          areaSize: { type: 'number', default: 10 },
+          fallSpeed: { type: 'number', default: 0.8 },
+          enabled: { type: 'boolean', default: true }
+        },
+        
+        init: function() {
+          this.snowflakes = [];
+          this.playerPos = new THREE.Vector3();
+          this.camera = document.getElementById('rig');
+          
+          if (this.data.enabled) {
+            this.createSnowflakes();
+          }
+          
+          console.log('❄️ Simple Snow initialisé -', this.data.count, 'flocons');
+        },
+        
+        createSnowflakes: function() {
+          const data = this.data;
+          
+          for (let i = 0; i < data.count; i++) {
+            // Créer un flocon simple (petit plan blanc)
+            const flake = document.createElement('a-plane');
+            flake.setAttribute('width', 0.02 + Math.random() * 0.03);
+            flake.setAttribute('height', 0.02 + Math.random() * 0.03);
+            flake.setAttribute('material', {
+              color: '#ffffff',
+              opacity: 0.6 + Math.random() * 0.4,
+              transparent: true,
+              shader: 'flat',
+              side: 'double'
+            });
+            flake.setAttribute('look-at', '[camera]');
+            
+            // Position aléatoire autour du centre
+            const x = (Math.random() - 0.5) * data.areaSize;
+            const y = Math.random() * 8 + 1;
+            const z = (Math.random() - 0.5) * data.areaSize;
+            flake.setAttribute('position', { x, y, z });
+            
+            // Stocker les données d'animation
+            flake.snowData = {
+              speedY: data.fallSpeed * (0.5 + Math.random() * 0.5),
+              speedX: (Math.random() - 0.5) * 0.3,
+              speedZ: (Math.random() - 0.5) * 0.2
+            };
+            
+            this.el.appendChild(flake);
+            this.snowflakes.push(flake);
+          }
+        },
+        
+        tick: function(time, delta) {
+          if (!this.data.enabled || this.snowflakes.length === 0) return;
+          
+          const dt = delta / 1000;
+          const data = this.data;
+          const halfArea = data.areaSize / 2;
+          
+          // Récupérer la position du joueur
+          if (this.camera) {
+            this.camera.object3D.getWorldPosition(this.playerPos);
+          }
+          
+          // Animer chaque flocon
+          this.snowflakes.forEach(flake => {
+            const pos = flake.getAttribute('position');
+            const sd = flake.snowData;
+            
+            // Descente + mouvement latéral
+            pos.y -= sd.speedY * dt;
+            pos.x += sd.speedX * dt;
+            pos.z += sd.speedZ * dt;
+            
+            // Téléporter en haut si touche le sol
+            if (pos.y < -0.5) {
+              pos.y = 8 + Math.random() * 2;
+              pos.x = this.playerPos.x + (Math.random() - 0.5) * data.areaSize;
+              pos.z = this.playerPos.z + (Math.random() - 0.5) * data.areaSize;
+              sd.speedX = (Math.random() - 0.5) * 0.3;
+            }
+            
+            // Garder les flocons autour du joueur
+            if (Math.abs(pos.x - this.playerPos.x) > halfArea) {
+              pos.x = this.playerPos.x + (Math.random() - 0.5) * data.areaSize;
+            }
+            if (Math.abs(pos.z - this.playerPos.z) > halfArea) {
+              pos.z = this.playerPos.z + (Math.random() - 0.5) * data.areaSize;
+            }
+            
+            flake.setAttribute('position', pos);
+          });
+        },
+        
+        remove: function() {
+          this.snowflakes.forEach(flake => flake.remove());
+          this.snowflakes = [];
+        }
+      });
+
       // ========== COMPOSANT OVERTIME TRIGGER (Proximity Check) ==========
       AFRAME.registerComponent('overtime-trigger', {
         init: function() {
@@ -690,7 +819,7 @@
           const originalPos = this.el.getAttribute('position');
           this.el.setAttribute('animation__press', {
             property: 'position',
-            to: `${originalPos.x} ${originalPos.y} ${originalPos.z - 0.02}`,
+            to: `${originalPos.x} ${originalPos.y} ${originalPos.z + 0.02}`,
             dur: 100, easing: 'easeOutQuad'
           });
           
@@ -777,6 +906,17 @@
             gooSystem.components['goo-spawner'].data.maxDrops = 30;
           }
           
+          // === SON D'AMBIANCE VISQUEUX (après 3 secondes) ===
+          setTimeout(() => {
+            const gooSpill = document.getElementById('goo-spill');
+            if (gooSpill) {
+              gooSpill.currentTime = 0;
+              gooSpill.volume = 0.7;
+              gooSpill.play().catch(e => console.warn('Goo spill sound:', e));
+              console.log('💧 Son d\'inondation visqueuse lancé');
+            }
+          }, 3000);
+          
           // === TREMBLEMENT SEULEMENT DANS LES 3 DERNIÈRES SECONDES ===
           setTimeout(() => {
             console.log('📳 Tremblement final activé');
@@ -847,9 +987,9 @@
           if (glitchPlane) {
             glitchPlane.setAttribute('visible', 'true');
             
-            // === STROBE NOIR/BLANC UNIQUEMENT ===
+            // === STROBE NOIR/BLANC RALENTI (Plus dramatique) ===
             let flashCount = 0;
-            const maxFlashes = 10;
+            const maxFlashes = 25; // Plus de flashs pour ~3 secondes
             let isWhite = true;
             
             const strobeInterval = setInterval(() => {
@@ -885,7 +1025,7 @@
                 isWhite = !isWhite;
                 glitchPlane.setAttribute('material', `shader: flat; color: ${color}; opacity: 1; transparent: true; side: double`);
               }
-            }, 50); // Flash rapide 50ms
+            }, 70); // Flash ralenti 70ms (au lieu de 50ms)
           } else {
             // Fallback
             setTimeout(() => self.performGameReset(), 500);
@@ -1002,7 +1142,7 @@
             deskCluster.setAttribute('animation', {
               property: 'position',
               from: '0 -10 0',
-              to: '0 0 0',
+              to: '0 -0.3 0',
               dur: 4000,
               easing: 'easeOutExpo'
             });
@@ -1057,7 +1197,7 @@
           // Bouton s'enfonce (Z local -3cm)
           this.el.setAttribute('animation__press', {
             property: 'position',
-            to: `${this.originalBtnPos.x} ${this.originalBtnPos.y} ${this.originalBtnPos.z - 0.03}`,
+            to: `${this.originalBtnPos.x} ${this.originalBtnPos.y} ${this.originalBtnPos.z + 0.03}`,
             dur: 150, easing: 'easeOutQuad'
           });
           
@@ -2087,6 +2227,9 @@
         <audio id="goat2" src="audio/goat/goat2.mp3" preload="auto"></audio>
         <audio id="goat3" src="audio/goat/goat3.mp3" preload="auto"></audio>
         
+        <!-- Son d'inondation visqueuse -->
+        <audio id="goo-spill" src="audio/goo_spill.mp3" preload="auto"></audio>
+        
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
         <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>
@@ -2112,7 +2255,7 @@
         <!-- ========== DESK CLUSTER (Caché sous le sol - Surgit au reset) ========== -->
         <a-entity id="desk-cluster" 
                   position="0 -10 0" 
-                  scale="0.01 0.01 0.01"
+                  scale="0.02 0.02 0.02"
                   gltf-model="#desks-asset">
         </a-entity>
         
@@ -2250,7 +2393,7 @@
               <!-- <a-circle rotation="-90 0 0" radius="0.6" color="#000000" opacity="0.3" position="0 0.02 0"></a-circle> -->
           </a-entity>
 
-          <a-entity id="storage-right" position="4 0 2.5" rotation="0 90 0">
+          <a-entity id="storage-right" position="4 0 2.8" rotation="0 90 0">
               <a-gltf-model src="#storage-asset" scale="1.5 1.5 1.5"></a-gltf-model>
               <!-- <a-circle rotation="-90 0 0" radius="0.6" color="#000000" opacity="0.3" position="0 0.02 0"></a-circle> -->
           </a-entity>
@@ -2378,6 +2521,11 @@
                  distance="80" 
                  position="40 2 -60">
         </a-light>
+        
+        <!-- ========== NEIGE LÉGÈRE (Performance Optimized) ========== -->
+        <a-entity id="snow-system" 
+                  simple-snow="count: 45; areaSize: 12; fallSpeed: 0.8; enabled: true">
+        </a-entity>
         
         <!-- ========== GROUPE ASCENSEUR (Enterré initialement) ========== -->
         <a-entity id="elevator-group" 
@@ -2524,21 +2672,21 @@
           <!-- PHARE au fond (silhouette mystérieuse) -->
           <a-light type="point" 
                    color="#ffffff" 
-                   intensity="15" 
-                   distance="30" 
-                   decay="0.8"
+                   intensity="25" 
+                   distance="35" 
+                   decay="0.6"
                    position="0 1.5 -12">
           </a-light>
           
           <!-- Lumière ambiante plus visible -->
-          <a-light type="ambient" color="#444444" intensity="1.2"></a-light>
+          <a-light type="ambient" color="#555555" intensity="1.8"></a-light>
           
           <!-- Lumière près de l'ascenseur -->
           <a-light type="point" 
                    color="#aaaaaa" 
-                   intensity="2" 
-                   distance="15" 
-                   decay="1.5"
+                   intensity="4" 
+                   distance="20" 
+                   decay="1.2"
                    position="0 2.5 8">
           </a-light>
           

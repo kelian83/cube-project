@@ -870,6 +870,18 @@
           gooFlood.setAttribute('visible', 'true');
           gooFlood.setAttribute('position', '0 7 -8');
           
+          // === SON D'AMBIANCE VISQUEUX (après 7 secondes) ===
+          setTimeout(() => {
+            const gooSpill = document.getElementById('goo-spill');
+            if (gooSpill) {
+              gooSpill.loop = false; // Ne jouer qu'une seule fois
+              gooSpill.currentTime = 0;
+              gooSpill.volume = 0.7;
+              gooSpill.play().catch(e => console.warn('Goo spill sound:', e));
+              console.log('💧 Son d\'inondation visqueuse lancé après 8,2 secondes');
+            }
+          }, 8200);
+          
           // Animation de descente lente (15 secondes)
           gooFlood.setAttribute('animation__descend', {
             property: 'position',
@@ -905,17 +917,6 @@
             gooSystem.components['goo-spawner'].data.spawnInterval = 80;
             gooSystem.components['goo-spawner'].data.maxDrops = 30;
           }
-          
-          // === SON D'AMBIANCE VISQUEUX (après 3 secondes) ===
-          setTimeout(() => {
-            const gooSpill = document.getElementById('goo-spill');
-            if (gooSpill) {
-              gooSpill.currentTime = 0;
-              gooSpill.volume = 0.7;
-              gooSpill.play().catch(e => console.warn('Goo spill sound:', e));
-              console.log('💧 Son d\'inondation visqueuse lancé');
-            }
-          }, 3000);
           
           // === TREMBLEMENT SEULEMENT DANS LES 3 DERNIÈRES SECONDES ===
           setTimeout(() => {
@@ -2638,7 +2639,7 @@
           </a-plane>
           
           <!-- Plafond gris anthracite -->
-          <a-plane position="0 3 0" 
+          <a-plane position="0 3 0"
                    rotation="90 0 0" 
                    width="2" 
                    height="20" 

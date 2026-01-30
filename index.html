@@ -459,6 +459,90 @@
         window.dispatchEvent(new CustomEvent('outie_world_start'));
       }
 
+      // ========== COMPOSANT GOAT HAUNTING (Sons de chèvres aléatoires) ==========
+      AFRAME.registerComponent('goat-haunting', {
+        schema: {
+          interval: { type: 'number', default: 8000 }, // 8 secondes
+          volume: { type: 'number', default: 0.7 }
+        },
+        
+        init: function() {
+          this.isActive = false;
+          this.intervalId = null;
+          this.goatSounds = ['goat1', 'goat2', 'goat3'];
+          console.log('🐐 Goat Haunting System initialisé (inactif)');
+        },
+        
+        startHaunting: function() {
+          if (this.isActive) return;
+          this.isActive = true;
+          
+          const self = this;
+          
+          // Jouer immédiatement un premier son
+          setTimeout(() => {
+            self.playRandomGoat();
+          }, 2000);
+          
+          // Puis répéter toutes les 8 secondes
+          this.intervalId = setInterval(() => {
+            self.playRandomGoat();
+          }, this.data.interval);
+          
+          console.log('🐐 Goat Haunting ACTIVÉ - Intervalle:', this.data.interval + 'ms');
+        },
+        
+        stopHaunting: function() {
+          if (!this.isActive) return;
+          this.isActive = false;
+          
+          if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+          }
+          
+          console.log('🐐 Goat Haunting désactivé');
+        },
+        
+        playRandomGoat: function() {
+          if (!this.isActive) return;
+          
+          // Choisir un son aléatoire
+          const randomIndex = Math.floor(Math.random() * this.goatSounds.length);
+          const soundId = this.goatSounds[randomIndex];
+          
+          // Utiliser le son spatial 3D (a-sound)
+          const spatialSound = document.getElementById('goat-spatial-sound');
+          if (spatialSound && spatialSound.components.sound) {
+            const soundComponent = spatialSound.components.sound;
+            
+            // Changer la source audio
+            soundComponent.stopSound();
+            spatialSound.setAttribute('sound', {
+              src: '#' + soundId,
+              volume: this.data.volume,
+              positional: true,
+              maxDistance: 20,
+              refDistance: 5,
+              rolloffFactor: 1.5
+            });
+            
+            // Attendre un tick puis jouer
+            setTimeout(() => {
+              if (soundComponent.sound && soundComponent.sound.context.state === 'suspended') {
+                soundComponent.sound.context.resume();
+              }
+              soundComponent.playSound();
+              console.log('🐐 Playing (3D spatial):', soundId, 'from position', this.el.getAttribute('position'));
+            }, 50);
+          }
+        },
+        
+        remove: function() {
+          this.stopHaunting();
+        }
+      });
+
       // ========== COMPOSANT OVERTIME TRIGGER (Proximity Check) ==========
       AFRAME.registerComponent('overtime-trigger', {
         init: function() {
@@ -887,6 +971,43 @@
             jazzEnding.volume = 0.5;
             jazzEnding.play().catch(e => console.warn('Jazz ending:', e));
             console.log('🎵 Musique d\'ambiance jazz activée');
+          }
+          
+          // ========== ACTIVER GOAT HAUNTING ==========
+          const goatEmitter = document.getElementById('goat-sound-emitter');
+          if (goatEmitter && goatEmitter.components['goat-haunting']) {
+            goatEmitter.components['goat-haunting'].startHaunting();
+            console.log('🐐 Goat Haunting activé!');
+          }
+          
+          // ========== CACHER L'ANCIEN BUREAU SOLO ==========
+          const oldDesk = document.getElementById('severance-desk');
+          if (oldDesk) {
+            oldDesk.setAttribute('visible', 'false');
+            console.log('💼 Ancien bureau caché');
+          }
+          
+          // ========== ANIMATION DESK CLUSTER (MONTÉE MAJESTUEUSE) ==========
+          const deskCluster = document.getElementById('desk-cluster');
+          if (deskCluster) {
+            // Jouer le son hydraulique pour donner du poids
+            const hydraulicSound = document.getElementById('hydraulic-sound');
+            if (hydraulicSound) {
+              hydraulicSound.currentTime = 0;
+              hydraulicSound.volume = 0.8;
+              hydraulicSound.play().catch(e => console.warn('Hydraulic sound:', e));
+            }
+            
+            // Animation de montée depuis sous le sol
+            deskCluster.setAttribute('animation', {
+              property: 'position',
+              from: '0 -10 0',
+              to: '0 0 0',
+              dur: 4000,
+              easing: 'easeOutExpo'
+            });
+            
+            console.log('🖥️ Desk Cluster monte du sol!');
           }
           
           console.log('✅ JEU RÉINITIALISÉ - Bienvenue chez Lumon Industries!');
@@ -1940,6 +2061,7 @@
         <a-asset-item id="water-cooler-asset" src="assets/water_cooler.glb"></a-asset-item>
         <a-asset-item id="storage-asset" src="assets/storage.glb"></a-asset-item>
         <a-asset-item id="clock-asset" src="assets/wall_clock.glb"></a-asset-item>
+        <a-asset-item id="desks-asset" src="assets/desks.glb"></a-asset-item>
         
         <!-- Sons Ascenseur -->
         <audio id="rumble-sound" src="audio/hydraulic.mp3" preload="auto"></audio>
@@ -1960,6 +2082,11 @@
         <audio id="transition-sound" src="audio/transition-elevator.mp3" preload="auto"></audio>
         <audio id="jazz-ending" src="audio/lumon_jazz_ending.mp3" preload="auto" loop="true"></audio>
         
+        <!-- Sons Chèvres (Goat Haunting) -->
+        <audio id="goat1" src="audio/goat/goat1.mp3" preload="auto"></audio>
+        <audio id="goat2" src="audio/goat/goat2.mp3" preload="auto"></audio>
+        <audio id="goat3" src="audio/goat/goat3.mp3" preload="auto"></audio>
+        
         <a-mixin id="wall-panel" material="color: #ffffff; roughness: 0.1; metalness: 0.1"></a-mixin>
         <a-mixin id="floor-carpet" material="color: #5B7C65; roughness: 0.95; metalness: 0"></a-mixin>
         <a-mixin id="aluminum" material="color: #c0c0c0; roughness: 0.2; metalness: 0.9"></a-mixin>
@@ -1968,6 +2095,27 @@
 
       <!-- ========== INNIE WORLD ========== -->
       <a-entity id="innie-world">
+        
+        <!-- ========== GOAT SOUND EMITTER (Invisible - Haunting) ========== -->
+        <a-entity id="goat-sound-emitter" 
+                  position="-8 0 -10" 
+                  goat-haunting="interval: 8000; volume: 0.7">
+          <!-- Son spatial 3D (src changé dynamiquement) -->
+          <a-sound id="goat-spatial-sound" 
+                   positional="true" 
+                   max-distance="20" 
+                   ref-distance="5" 
+                   rolloff-factor="1.5">
+          </a-sound>
+        </a-entity>
+        
+        <!-- ========== DESK CLUSTER (Caché sous le sol - Surgit au reset) ========== -->
+        <a-entity id="desk-cluster" 
+                  position="0 -10 0" 
+                  scale="0.01 0.01 0.01"
+                  gltf-model="#desks-asset">
+        </a-entity>
+        
         <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="8" mixin="floor-carpet"></a-plane>
         <a-plane position="0 3 0" rotation="90 0 0" width="10" height="8" material="color: #e8e8e8; roughness: 0.3"></a-plane>
 
@@ -2376,21 +2524,21 @@
           <!-- PHARE au fond (silhouette mystérieuse) -->
           <a-light type="point" 
                    color="#ffffff" 
-                   intensity="8" 
+                   intensity="15" 
                    distance="30" 
                    decay="0.8"
                    position="0 1.5 -12">
           </a-light>
           
           <!-- Lumière ambiante plus visible -->
-          <a-light type="ambient" color="#444444" intensity="0.7"></a-light>
+          <a-light type="ambient" color="#444444" intensity="1.2"></a-light>
           
           <!-- Lumière près de l'ascenseur -->
           <a-light type="point" 
                    color="#aaaaaa" 
-                   intensity="0.8" 
-                   distance="8" 
-                   decay="2"
+                   intensity="2" 
+                   distance="15" 
+                   decay="1.5"
                    position="0 2.5 8">
           </a-light>
           

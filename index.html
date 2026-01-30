@@ -1097,8 +1097,8 @@
           if (sky) sky.setAttribute('color', '#e0e0e0');
           if (scene) scene.setAttribute('fog', 'type: exponential; color: #f0f0f0; density: 0.008');
           
-          // Téléporter le joueur
-          if (rig) rig.setAttribute('position', '0 0 2');
+          // Téléporter le joueur au centre exact du bureau
+          if (rig) rig.setAttribute('position', '0 0 0');
           
           // Arrêter les sons
           const wind = document.getElementById('outie-wind');

@@ -115,126 +115,99 @@ const GameState = {
 // ============================================
 // COMPONENT: gamepad-movement
 // Gère le déplacement avec le joystick de la manette
+// Fonctionne avec Meta Quest 3
 // ============================================
 AFRAME.registerComponent('gamepad-movement', {
   schema: {
-    speed: { type: 'number', default: 3.0 },
-    deadzone: { type: 'number', default: 0.15 }
+    speed: { type: 'number', default: 2.5 },
+    deadzone: { type: 'number', default: 0.2 }
   },
 
   init: function () {
     this.velocity = new THREE.Vector3();
     this.direction = new THREE.Vector3();
-    
-    // Référence à la caméra
     this.cameraEl = null;
     
-    // État du joystick
-    this.axisX = 0;
-    this.axisY = 0;
-    
-    // Écouter les événements thumbstick sur les mains
-    this.onThumbstickMoved = this.onThumbstickMoved.bind(this);
-    
-    // Attendre que la scène soit chargée
-    this.el.sceneEl.addEventListener('loaded', () => {
-      this.cameraEl = document.querySelector('a-camera');
-      
-      // Attacher les événements aux contrôleurs
-      const leftHand = document.getElementById('leftHand');
-      if (leftHand) {
-        leftHand.addEventListener('thumbstickmoved', this.onThumbstickMoved);
-        leftHand.addEventListener('axismove', this.onThumbstickMoved);
-      }
-    });
-    
-    console.log('🎮 Gamepad movement initialisé');
-  },
-
-  onThumbstickMoved: function (evt) {
-    if (evt.detail.axis) {
-      // Format axismove (tableau d'axes)
-      this.axisX = evt.detail.axis[0] || 0;
-      this.axisY = evt.detail.axis[1] || 0;
-    } else {
-      // Format thumbstickmoved (x, y)
-      this.axisX = evt.detail.x || 0;
-      this.axisY = evt.detail.y || 0;
-    }
+    console.log('🎮 Gamepad movement initialisé - Quest 3');
   },
 
   tick: function (time, delta) {
+    // Récupérer la caméra
     if (!this.cameraEl) {
-      this.cameraEl = document.querySelector('a-camera');
+      this.cameraEl = this.el.querySelector('[camera]') || document.querySelector('[camera]');
       if (!this.cameraEl) return;
     }
 
-    // Fallback: lire directement depuis la session XR si pas d'événements
-    this.readGamepadAxes();
+    // Lire les gamepads via l'API native
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let axisX = 0;
+    let axisY = 0;
+    let found = false;
 
-    // Appliquer la deadzone
-    let x = this.axisX;
-    let y = this.axisY;
-    
-    if (Math.abs(x) < this.data.deadzone) x = 0;
-    if (Math.abs(y) < this.data.deadzone) y = 0;
+    for (const gamepad of gamepads) {
+      if (!gamepad) continue;
+      
+      // Chercher une manette avec des axes (Quest controllers ont 4 axes)
+      if (gamepad.axes && gamepad.axes.length >= 2) {
+        // Meta Quest 3: Le joystick gauche est sur les axes 0 et 1 pour le premier gamepad
+        // ou axes 2 et 3 pour certains mappings
+        const id = gamepad.id.toLowerCase();
+        
+        if (id.includes('left') || id.includes('oculus') || id.includes('meta') || id.includes('quest')) {
+          // Essayer axes 2,3 d'abord (thumbstick), sinon 0,1
+          if (gamepad.axes.length >= 4) {
+            axisX = gamepad.axes[2];
+            axisY = gamepad.axes[3];
+          } else {
+            axisX = gamepad.axes[0];
+            axisY = gamepad.axes[1];
+          }
+          found = true;
+          break;
+        }
+      }
+    }
 
-    if (x === 0 && y === 0) return;
-
-    // Obtenir la rotation de la caméra
-    const cameraObject = this.cameraEl.object3D;
-    cameraObject.getWorldDirection(this.direction);
-    
-    // Projeter sur le plan horizontal
-    this.direction.y = 0;
-    this.direction.normalize();
-    
-    // Calculer le vecteur "droite"
-    const right = new THREE.Vector3();
-    right.crossVectors(this.direction, new THREE.Vector3(0, 1, 0)).normalize();
-
-    // Calculer la vélocité
-    const speed = this.data.speed * (delta / 1000);
-    
-    this.velocity.set(0, 0, 0);
-    this.velocity.addScaledVector(this.direction, -y * speed); // Avant/Arrière
-    this.velocity.addScaledVector(right, x * speed);           // Gauche/Droite
-
-    // Appliquer le déplacement au rig
-    this.el.object3D.position.add(this.velocity);
-  },
-
-  readGamepadAxes: function () {
-    const sceneEl = this.el.sceneEl;
-    if (!sceneEl.xrSession) return;
-    
-    const inputSources = sceneEl.xrSession.inputSources;
-    if (!inputSources) return;
-    
-    for (const source of inputSources) {
-      // Chercher le contrôleur gauche
-      if (source.handedness === 'left' && source.gamepad) {
-        const axes = source.gamepad.axes;
-        if (axes && axes.length >= 4) {
-          // Meta Quest: axes[2] et axes[3] pour le thumbstick
-          this.axisX = axes[2];
-          this.axisY = axes[3];
-        } else if (axes && axes.length >= 2) {
-          // Fallback: axes[0] et axes[1]
-          this.axisX = axes[0];
-          this.axisY = axes[1];
+    // Si aucun gamepad spécifique trouvé, prendre le premier disponible
+    if (!found) {
+      for (const gamepad of gamepads) {
+        if (!gamepad || !gamepad.axes || gamepad.axes.length < 2) continue;
+        
+        if (gamepad.axes.length >= 4) {
+          axisX = gamepad.axes[2];
+          axisY = gamepad.axes[3];
+        } else {
+          axisX = gamepad.axes[0];
+          axisY = gamepad.axes[1];
         }
         break;
       }
     }
-  },
 
-  remove: function () {
-    const leftHand = document.getElementById('leftHand');
-    if (leftHand) {
-      leftHand.removeEventListener('thumbstickmoved', this.onThumbstickMoved);
-      leftHand.removeEventListener('axismove', this.onThumbstickMoved);
-    }
+    // Appliquer la deadzone
+    if (Math.abs(axisX) < this.data.deadzone) axisX = 0;
+    if (Math.abs(axisY) < this.data.deadzone) axisY = 0;
+
+    if (axisX === 0 && axisY === 0) return;
+
+    // Obtenir la direction de la caméra
+    this.cameraEl.object3D.getWorldDirection(this.direction);
+    this.direction.y = 0;
+    this.direction.normalize();
+
+    // Calculer le vecteur droite
+    const right = new THREE.Vector3();
+    right.crossVectors(new THREE.Vector3(0, 1, 0), this.direction).normalize();
+
+    // Calculer le déplacement
+    const speed = this.data.speed * (delta / 1000);
+    
+    this.velocity.set(0, 0, 0);
+    this.velocity.addScaledVector(this.direction, -axisY * speed);
+    this.velocity.addScaledVector(right, -axisX * speed);
+
+    // Appliquer au rig
+    this.el.object3D.position.add(this.velocity);
   }
 });
 

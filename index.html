@@ -5,6 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Severance VR Experience - Acte 1</title>
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    
+    <!-- Composant pour le déplacement avec joystick Quest 3 -->
+    <script>
+      AFRAME.registerComponent('gamepad-movement', {
+        schema: {
+          speed: { type: 'number', default: 2.5 },
+          deadzone: { type: 'number', default: 0.15 }
+        },
+
+        init: function () {
+          this.velocity = new THREE.Vector3();
+          this.direction = new THREE.Vector3();
+          this.cameraEl = null;
+          this.leftController = null;
+          
+          // Écouter les événements thumbstick
+          const self = this;
+          this.thumbstickHandler = function(evt) {
+            self.axisX = evt.detail.x || 0;
+            self.axisY = evt.detail.y || 0;
+          };
+          
+          this.axisX = 0;
+          this.axisY = 0;
+          
+          // Attendre que la scène soit prête
+          this.el.sceneEl.addEventListener('loaded', () => {
+            // Attacher aux contrôleurs
+            const leftHand = document.getElementById('leftHand');
+            if (leftHand) {
+              leftHand.addEventListener('thumbstickmoved', self.thumbstickHandler);
+              self.leftController = leftHand;
+            }
+          });
+          
+          console.log('🎮 Gamepad movement initialisé - Quest 3');
+        },
+
+        tick: function (time, delta) {
+          if (!delta) return;
+          
+          // Récupérer la caméra
+          if (!this.cameraEl) {
+            this.cameraEl = this.el.querySelector('[camera]') || document.querySelector('[camera]');
+            if (!this.cameraEl) return;
+          }
+
+          let axisX = this.axisX;
+          let axisY = this.axisY;
+
+          // Méthode WebXR: lire depuis la session XR
+          const sceneEl = this.el.sceneEl;
+          const renderer = sceneEl.renderer;
+          const xrSession = renderer && renderer.xr && renderer.xr.getSession ? renderer.xr.getSession() : null;
+          
+          if (xrSession && xrSession.inputSources) {
+            for (const source of xrSession.inputSources) {
+              if (source.gamepad && source.handedness === 'left') {
+                const axes = source.gamepad.axes;
+                if (axes.length >= 4) {
+                  axisX = axes[2];
+                  axisY = axes[3];
+                } else if (axes.length >= 2) {
+                  axisX = axes[0];
+                  axisY = axes[1];
+                }
+                break;
+              }
+            }
+          }
+          
+          // Fallback: API Gamepad standard (pour tests desktop)
+          if (axisX === 0 && axisY === 0 && navigator.getGamepads) {
+            const gamepads = navigator.getGamepads();
+            for (let i = 0; i < gamepads.length; i++) {
+              const gamepad = gamepads[i];
+              if (!gamepad || !gamepad.axes) continue;
+              if (gamepad.axes.length >= 2) {
+                axisX = gamepad.axes[0];
+                axisY = gamepad.axes[1];
+                break;
+              }
+            }
+          }
+
+          // Appliquer la deadzone
+          if (Math.abs(axisX) < this.data.deadzone) axisX = 0;
+          if (Math.abs(axisY) < this.data.deadzone) axisY = 0;
+
+          if (axisX === 0 && axisY === 0) return;
+
+          // Obtenir la direction de la caméra
+          this.cameraEl.object3D.getWorldDirection(this.direction);
+          this.direction.y = 0;
+          this.direction.normalize();
+
+          // Calculer le vecteur droite
+          const right = new THREE.Vector3();
+          right.crossVectors(new THREE.Vector3(0, 1, 0), this.direction).normalize();
+
+          // Calculer le déplacement
+          const speed = this.data.speed * (delta / 1000);
+          
+          this.velocity.set(0, 0, 0);
+          this.velocity.addScaledVector(this.direction, -axisY * speed);
+          this.velocity.addScaledVector(right, -axisX * speed);
+
+          // Appliquer au rig
+          this.el.object3D.position.add(this.velocity);
+        },
+        
+        remove: function() {
+          if (this.leftController) {
+            this.leftController.removeEventListener('thumbstickmoved', this.thumbstickHandler);
+          }
+        }
+      });
+    </script>
+    
     <style>
       body { margin: 0; overflow: hidden; }
       .a-enter-vr-button { 

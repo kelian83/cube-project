@@ -113,6 +113,85 @@ const GameState = {
 };
 
 // ============================================
+// COMPONENT: gamepad-movement
+// Gère le déplacement avec le joystick de la manette
+// ============================================
+AFRAME.registerComponent('gamepad-movement', {
+  schema: {
+    speed: { type: 'number', default: 3.0 },
+    deadzone: { type: 'number', default: 0.2 }
+  },
+
+  init: function () {
+    this.velocity = new THREE.Vector3();
+    this.camera = null;
+  },
+
+  tick: function (time, delta) {
+    // Récupérer la caméra une fois
+    if (!this.camera) {
+      this.camera = this.el.querySelector('a-camera');
+      if (!this.camera) return;
+    }
+
+    // Récupérer la session XR
+    const session = this.el.sceneEl.xrSession;
+    if (!session) return;
+
+    // Parcourir les sources d'entrée (manettes)
+    const inputSources = session.inputSources;
+    for (const source of inputSources) {
+      if (source.gamepad && source.handedness === 'left') {
+        // Utiliser le joystick gauche pour le déplacement
+        const gamepad = source.gamepad;
+        const axes = gamepad.axes;
+
+        if (axes.length >= 2) {
+          let x = axes[2]; // Joystick gauche X
+          let y = axes[3]; // Joystick gauche Y
+
+          // Appliquer la deadzone
+          if (Math.abs(x) < this.data.deadzone) x = 0;
+          if (Math.abs(y) < this.data.deadzone) y = 0;
+
+          if (x !== 0 || y !== 0) {
+            // Obtenir la direction de la caméra
+            const cameraRotation = this.camera.object3D.rotation.y;
+            
+            // Calculer le déplacement relatif à la direction de la caméra
+            const forward = new THREE.Vector3(
+              Math.sin(cameraRotation),
+              0,
+              Math.cos(cameraRotation)
+            );
+            
+            const right = new THREE.Vector3(
+              Math.cos(cameraRotation),
+              0,
+              -Math.sin(cameraRotation)
+            );
+
+            // Calculer la vélocité
+            this.velocity.set(0, 0, 0);
+            this.velocity.addScaledVector(forward, -y); // Avant/Arrière (inverser Y)
+            this.velocity.addScaledVector(right, x);    // Gauche/Droite
+            this.velocity.multiplyScalar(this.data.speed * (delta / 1000));
+
+            // Appliquer le déplacement au rig
+            const currentPos = this.el.object3D.position;
+            this.el.object3D.position.set(
+              currentPos.x + this.velocity.x,
+              currentPos.y,
+              currentPos.z + this.velocity.z
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+// ============================================
 // COMPONENT: cable-system
 // Gère la physique simplifiée des câbles
 // ============================================
